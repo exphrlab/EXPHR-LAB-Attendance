@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EXPHR LAB Attendance</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
+
+/* HEADER */
+.header { background: #1a1a2e; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.header-title { color: #fff; font-size: 17px; font-weight: 700; }
+.header-time { color: #8892b0; font-size: 12px; }
+.admin-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #ccd6f6; padding: 7px 15px; border-radius: 7px; font-size: 12px; cursor: pointer; font-weight: 600; }
+.admin-btn:hover { background: rgba(255,255,255,0.15); }
+
+/* MAIN CHECK-IN AREA */
+.main { max-width: 800px; margin: 0 auto; padding: 32px 24px; }
+.loc-banner { display: none; border-radius: 10px; padding: 13px 16px; margin-bottom: 20px; font-size: 13px; font-weight: 600; align-items: center; gap: 10px; line-height: 1.4; }
+.loc-banner.checking { display: flex; background: #eef2ff; color: #4a5568; }
+.loc-banner.ok       { display: flex; background: #e6f9f0; color: #1a7a4a; }
+.loc-banner.fail     { display: flex; background: #fff0f0; color: #c0392b; }
+
+.selected-card { background: #fff; border-radius: 14px; padding: 22px; margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); display: none; }
+.selected-card.visible { display: block; }
+.selected-name { font-size: 21px; font-weight: 800; margin-bottom: 3px; }
+.selected-group-badge { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 20px; display: inline-block; margin-bottom: 14px; }
+.gbadge-undergrad { background: #e8f4ff; color: #1a6fc4; }
+.gbadge-masters   { background: #f0e8ff; color: #7c3aed; }
+.gbadge-staff     { background: #fff3e8; color: #c45c1a; }
+.selected-status { font-size: 13px; color: #8892b0; margin-bottom: 18px; }
+.selected-status.in { color: #27ae60; }
+.action-row { display: flex; gap: 10px; }
+.btn-ci, .btn-co { flex: 1; padding: 13px; border-radius: 10px; border: none; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
+.btn-ci { background: #2ecc71; color: #fff; }
+.btn-co { background: #fff; color: #e74c3c; border: 2px solid #e74c3c; }
+.btn-ci:disabled, .btn-co:disabled { opacity: 0.28; cursor: not-allowed; }
+.btn-ci:not(:disabled):active, .btn-co:not(:disabled):active { transform: scale(0.97); }
+
+.section-label { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #8892b0; margin-bottom: 14px; }
+.group-section { margin-bottom: 28px; }
+.group-title { font-size: 14px; font-weight: 700; color: #444; margin-bottom: 12px; padding-left: 2px; letter-spacing: 0.3px; }
+.member-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.member-tile { background: #fff; border: 2px solid transparent; border-radius: 12px; padding: 18px 20px; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+.member-tile:hover { border-color: #ccd6f6; box-shadow: 0 4px 16px rgba(0,0,0,0.11); transform: translateY(-1px); }
+.member-tile.selected { border-color: #4a90e2; background: #f0f5ff; }
+.member-tile.checked-in { border-color: #2ecc71; }
+.tile-name { font-size: 15px; font-weight: 700; }
+.tile-badge { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+.tile-badge.in  { background: #e8f8f0; color: #27ae60; }
+.tile-badge.out { background: #f0f0f5; color: #aaa; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1a1a2e; color: #fff; padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; white-space: nowrap; z-index: 999; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.green { background: #27ae60; }
+.toast.warn  { background: #e67e22; }
+
+/* OVERLAY / MODAL */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 20px 0; }
+.overlay.open { display: flex; }
+.modal { background: #fff; border-radius: 16px; width: 92%; max-width: 860px; padding: 28px; margin: auto; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.modal-title { font-size: 18px; font-weight: 800; }
+.close-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #aaa; }
+
+/* LOGIN */
+.login-box { max-width: 300px; margin: 0 auto; text-align: center; }
+.login-box h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.field-label { font-size: 12px; color: #888; text-align: left; margin-bottom: 4px; }
+.login-input { width: 100%; padding: 11px 13px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 15px; margin-bottom: 10px; outline: none; }
+.login-input:focus { border-color: #4a90e2; }
+.login-btn { width: 100%; padding: 12px; background: #1a1a2e; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px; }
+.login-error { color: #e74c3c; font-size: 13px; margin-top: 8px; display: none; }
+
+/* ADMIN PANEL */
+.admin-panel { display: none; }
+.admin-panel.visible { display: block; }
+.role-badge { display: inline-block; padding: 3px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 18px; }
+.role-admin { background: #1a1a2e; color: #fff; }
+.role-staff { background: #7c3aed; color: #fff; }
+
+/* TABS */
+.tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+.tab-btn { padding: 9px 18px; border: none; background: none; font-size: 14px; font-weight: 600; color: #8892b0; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s; }
+.tab-btn.active { color: #1a1a2e; border-bottom-color: #1a1a2e; }
+.tab-btn:hover:not(.active) { color: #555; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* FILTERS */
+.filter-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.filter-select, .filter-date { padding: 8px 12px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 13px; outline: none; background: #fff; cursor: pointer; }
+.filter-select:focus, .filter-date:focus { border-color: #4a90e2; }
+.filter-btn { padding: 8px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.export-btn { padding: 8px 16px; background: #f0f5ff; border: 1.5px solid #4a90e2; color: #4a90e2; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; margin-left: auto; }
+
+/* PERSON CARD */
+.person-block { margin-bottom: 12px; border: 1.5px solid #e8e8f0; border-radius: 14px; overflow: hidden; }
+.person-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: #fafafa; cursor: pointer; user-select: none; gap: 12px; }
+.person-head:hover { background: #f0f4ff; }
+.ph-left { flex: 1; min-width: 0; }
+.ph-name { font-weight: 700; font-size: 15px; }
+.ph-group { font-size: 11px; color: #aaa; font-weight: 500; margin-top: 1px; }
+.ph-stats { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+.ph-stat { display: flex; flex-direction: column; }
+.ph-stat-label { font-size: 10px; color: #aaa; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
+.ph-stat-value { font-size: 15px; font-weight: 800; color: #1a1a2e; margin-top: 1px; }
+.ph-stat-value.week { color: #4a90e2; }
+.ph-stat-value.month { color: #7c3aed; }
+.ph-right-arrow { color: #aaa; font-size: 13px; transition: transform 0.2s; flex-shrink: 0; }
+.person-block.open .ph-right-arrow { transform: rotate(180deg); }
+
+.person-detail { display: none; border-top: 1px solid #f0f0f8; }
+.person-block.open .person-detail { display: block; }
+
+/* DAILY RECORDS inside person */
+.rec-table { width: 100%; border-collapse: collapse; }
+.rec-table th { font-size: 11px; font-weight: 700; color: #8892b0; text-align: left; padding: 8px 20px; border-bottom: 1px solid #eee; text-transform: uppercase; letter-spacing: 0.8px; background: #fafafa; }
+.rec-table td { font-size: 13px; padding: 10px 20px; border-bottom: 1px solid #f5f5fa; }
+.rec-table tr:last-child td { border-bottom: none; }
+.no-rec { font-size: 13px; color: #aaa; padding: 20px; text-align: center; }
+.loading { text-align: center; padding: 28px; color: #8892b0; font-size: 14px; }
+
+/* DATE VIEW */
+.date-block { margin-bottom: 10px; border: 1.5px solid #e8e8f0; border-radius: 12px; overflow: hidden; }
+.date-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; background: #fafafa; cursor: pointer; user-select: none; }
+.date-head:hover { background: #f0f4ff; }
+.dh-name { font-weight: 700; font-size: 15px; }
+.dh-meta { font-size: 12px; color: #8892b0; margin-top: 2px; }
+.dh-right { display: flex; align-items: center; gap: 10px; }
+.dh-total { font-size: 13px; font-weight: 700; color: #4a90e2; }
+.date-records { display: none; padding: 0; }
+.date-block.open .date-records { display: block; }
+.date-block .ph-right-arrow { color: #aaa; font-size: 13px; transition: transform 0.2s; }
+.date-block.open .ph-right-arrow { transform: rotate(180deg); }
+
+/* MANAGE */
+.manage-group { margin-bottom: 22px; }
+.manage-group-title { font-size: 13px; font-weight: 700; color: #555; margin-bottom: 8px; }
+.add-row { display: flex; gap: 8px; margin-top: 8px; }
+.add-row input { flex: 1; padding: 9px 12px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 14px; outline: none; }
+.add-row input:focus { border-color: #4a90e2; }
+.add-btn { padding: 9px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.chip { display: flex; align-items: center; gap: 5px; border-radius: 20px; padding: 4px 12px; font-size: 13px; font-weight: 500; }
+.chip-undergrad { background: #e8f4ff; border: 1px solid #b3d4f5; color: #1a6fc4; }
+.chip-masters   { background: #f0e8ff; border: 1px solid #c4b3f5; color: #7c3aed; }
+.chip-staff     { background: #fff3e8; border: 1px solid #f5c4b3; color: #c45c1a; }
+.chip-del { background: none; border: none; color: #aaa; cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
+.chip-del:hover { color: #e74c3c; }
+.settings-section { margin-top: 24px; border-top: 1px solid #eee; padding-top: 20px; }
+.settings-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.settings-input { padding: 8px 12px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 14px; outline: none; }
+.settings-input:focus { border-color: #4a90e2; }
+.save-btn { padding: 8px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; }
+.saved-label { font-size: 12px; color: #27ae60; display: none; }
+
+@media (max-width: 560px) {
+  .member-grid { grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .modal { padding: 18px 14px; }
+  .filter-row { flex-direction: column; align-items: stretch; }
+  .export-btn { margin-left: 0; }
+  .ph-stats { gap: 12px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">EXPHR LAB Attendance</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="header-time" id="headerTime"></div>
+    <button class="admin-btn" onclick="openAdmin()">Admin / Staff</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="loc-banner checking" id="locBanner">
+    <span>&#128205;</span>
+    <span id="locMsg">Checking your location&hellip;</span>
+  </div>
+
+  <div class="selected-card" id="selectedCard">
+    <div class="selected-name" id="selName"></div>
+    <span class="selected-group-badge" id="selGroupBadge"></span>
+    <div class="selected-status" id="selStatus"></div>
+    <div class="action-row">
+      <button class="btn-ci" id="btnCI" onclick="doCheckIn()">Check In</button>
+      <button class="btn-co" id="btnCO" onclick="doCheckOut()">Check Out</button>
+    </div>
+  </div>
+
+  <div class="section-label">Select your name</div>
+  <div class="group-section">
+    <div class="group-title">&#x1F4BC; Staff</div>
+    <div class="member-grid" id="grid-staff"></div>
+  </div>
+  <div class="group-section">
+    <div class="group-title">&#x1F4DA; Master&#39;s</div>
+    <div class="member-grid" id="grid-masters"></div>
+  </div>
+  <div class="group-section">
+    <div class="group-title">&#x1F393; Undergrad</div>
+    <div class="member-grid" id="grid-undergrad"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="overlay" onclick="overlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">Login</div>
+      <button class="close-btn" onclick="closeAdmin()">&#x2715;</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="login-box" id="loginBox">
+      <h2>&#x1F512; Secure Login</h2>
+      <div class="field-label">Password</div>
+      <input class="login-input" type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')tryLogin()">
+      <div class="login-error" id="loginError">Incorrect password</div>
+      <button class="login-btn" onclick="tryLogin()">Log in</button>
+      <div style="margin-top:10px;font-size:11px;color:#aaa">Contact admin for your password</div>
+    </div>
+
+    <!-- PANEL -->
+    <div class="admin-panel" id="adminPanel">
+      <span class="role-badge" id="roleBadge"></span>
+
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('person',this)">By Person</button>
+        <button class="tab-btn" onclick="switchTab('date',this)">By Date</button>
+        <button class="tab-btn" id="manageTabBtn" onclick="switchTab('manage',this)" style="display:none">Manage</button>
+      </div>
+
+      <!-- BY PERSON -->
+      <div class="tab-content active" id="tab-person">
+        <div class="filter-row">
+          <select class="filter-select" id="fp-group">
+            <option value="">All Groups</option>
+            <option value="Undergrad">Undergrad</option>
+            <option value="Master's">Master&#39;s</option>
+          </select>
+          <input class="filter-date" type="date" id="fp-from">
+          <span style="font-size:13px;color:#aaa">to</span>
+          <input class="filter-date" type="date" id="fp-to">
+          <button class="filter-btn" onclick="loadAndRender()">Apply</button>
+          <button class="export-btn" onclick="exportCSV('person')">Export CSV</button>
+        </div>
+        <div id="personList"><div class="loading">Loading&hellip;</div></div>
+      </div>
+
+      <!-- BY DATE -->
+      <div class="tab-content" id="tab-date">
+        <div class="filter-row">
+          <select class="filter-select" id="fd-group">
+            <option value="">All Groups</option>
+            <option value="Undergrad">Undergrad</option>
+            <option value="Master's">Master&#39;s</option>
+          </select>
+          <input class="filter-date" type="date" id="fd-from">
+          <span style="font-size:13px;color:#aaa">to</span>
+          <input class="filter-date" type="date" id="fd-to">
+          <button class="filter-btn" onclick="loadAndRender()">Apply</button>
+          <button class="export-btn" onclick="exportCSV('date')">Export CSV</button>
+        </div>
+        <div id="dateList"><div class="loading">Loading&hellip;</div></div>
+      </div>
+
+      <!-- MANAGE (admin only) -->
+      <div class="tab-content" id="tab-manage">
+        <div class="manage-group">
+          <div class="manage-group-title">&#x1F4BC; Staff</div>
+          <div class="chips" id="chips-staff"></div>
+          <div class="add-row"><input id="inp-staff" placeholder="Full name" onkeydown="if(event.key==='Enter')addMember('staff')"><button class="add-btn" onclick="addMember('staff')">Add</button></div>
+        </div>
+        <div class="manage-group">
+          <div class="manage-group-title">&#x1F4DA; Master&#39;s</div>
+          <div class="chips" id="chips-masters"></div>
+          <div class="add-row"><input id="inp-masters" placeholder="Full name" onkeydown="if(event.key==='Enter')addMember('masters')"><button class="add-btn" onclick="addMember('masters')">Add</button></div>
+        </div>
+        <div class="manage-group">
+          <div class="manage-group-title">&#x1F393; Undergrad</div>
+          <div class="chips" id="chips-undergrad"></div>
+          <div class="add-row"><input id="inp-undergrad" placeholder="Full name" onkeydown="if(event.key==='Enter')addMember('undergrad')"><button class="add-btn" onclick="addMember('undergrad')">Add</button></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-label">Location Settings</div>
+          <label style="font-size:13px;color:#555;display:block;margin-top:8px">Allowed radius from office (meters)</label>
+          <div class="settings-row">
+            <input class="settings-input" type="number" id="radiusInput" min="30" max="500" step="5" style="width:110px">
+            <button class="save-btn" onclick="saveRadius()">Save</button>
+            <span class="saved-label" id="radiusSaved">Saved &#x2713;</span>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:#8892b0">Office: 57 Executive Park Dr NE, Atlanta, GA 30329</div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-label">Change Passwords</div>
+          <div style="display:grid;gap:8px;max-width:360px;margin-top:10px">
+            <label style="font-size:13px;color:#555;font-weight:600">New Admin Password</label>
+            <input class="settings-input" type="password" id="inp-adminpw" placeholder="Leave blank to keep current" style="width:100%">
+            <label style="font-size:13px;color:#555;font-weight:600;margin-top:4px">New Staff Password</label>
+            <input class="settings-input" type="password" id="inp-staffpw" placeholder="Leave blank to keep current" style="width:100%">
+            <div class="settings-row" style="margin-top:4px">
+              <button class="save-btn" onclick="savePws()">Save Passwords</button>
+              <span class="saved-label" id="pwSaved">Saved &#x2713;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzu-0Xjefo6N1m8Nd5BU2hj42LwT29iI4bpu1qZuTsnv08sfWyDkWFTBCI-D9pQggs/exec";
+const TZ = "America/New_York";
+const OFFICE_LAT = 33.8277, OFFICE_LNG = -84.3392;
+
+function ls(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}}
+function ss(k,v){localStorage.setItem(k,JSON.stringify(v));}
+
+let members  = ls("att5_members", {
+  staff:    ["John Kim","Joy Hong","Kaetlin Marsh"],
+  masters:  ["Andrew Yoon"],
+  undergrad:["Angela Qian","Audrey Chun","Charan Bandlamudi","Ella Levy","Gabija Staniskis","Jacob Zalis","Jade Lasanajak","Kate Arne","Yejee Park"]
+});
+let sessions = ls("att5_sessions", {});
+let radius   = ls("att5_radius",   300);
+let adminPw  = ls("att5_adminpw",  "exphr2410");
+let staffPw  = ls("att5_staffpw",  "exphr26");
+
+let selName=null, selGroup=null, currentRole=null;
+let locationOK=false, curLat=null, curLng=null;
+let allRecords=[], currentTab="person";
+
+// ── CLOCK ──────────────────────────────────────────────────────────────────
+function updateClock(){
+  document.getElementById("headerTime").textContent =
+    new Date().toLocaleString("en-US",{timeZone:TZ,weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:true})+" ET";
+}
+updateClock(); setInterval(updateClock,30000);
+
+// ── UTILS ───────────────────────────────────────────────────────────────────
+function fmtTime(ts){if(!ts)return"–";return new Date(ts).toLocaleTimeString("en-US",{timeZone:TZ,hour:"2-digit",minute:"2-digit",hour12:true});}
+function fmtDurMs(ms){if(!ms||ms<0)return"–";const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000);return h>0?h+"h "+m+"m":m+"m";}
+function fmtDurMins(mins){if(!mins||mins<=0)return"0m";const h=Math.floor(mins/60),m=mins%60;return h>0?h+"h "+m+"m":m+"m";}
+function todayStr(){return new Date().toLocaleDateString("en-CA",{timeZone:TZ});}
+function haversine(a,b,c,d){const R=6371000,dL=(c-a)*Math.PI/180,dLo=(d-b)*Math.PI/180;const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLo/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function groupLabel(g){return g==="staff"?"Staff":g==="masters"?"Master's":"Undergrad";}
+function groupApiLabel(g){return g==="staff"?"Staff":g==="masters"?"Master's":"Undergrad";}
+function gbadgeClass(g){return"selected-group-badge gbadge-"+g;}
+function chipClass(g){return"chip chip-"+g;}
+
+// Get Monday of the week for a date string YYYY-MM-DD
+function getWeekStart(dateStr){
+  const d=new Date(dateStr+"T12:00:00");
+  const day=d.getDay(); // 0=Sun
+  const diff=day===0?-6:1-day;
+  d.setDate(d.getDate()+diff);
+  return d.toLocaleDateString("en-CA");
+}
+
+// Get YYYY-MM for month
+function getMonth(dateStr){return dateStr?dateStr.slice(0,7):"";}
+
+function fmtDateLabel(s){
+  if(!s)return"";
+  const d=new Date(s+"T12:00:00");
+  return d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"});
+}
+function fmtWeekLabel(monStr){
+  const start=new Date(monStr+"T12:00:00");
+  const end=new Date(monStr+"T12:00:00"); end.setDate(end.getDate()+6);
+  const s=start.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+  const e=end.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+  return "Week of "+s+" – "+e;
+}
+function fmtMonthLabel(ym){
+  const d=new Date(ym+"-01T12:00:00");
+  return d.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+}
+
+// Get current week start (Monday) and month in ET
+function currentWeekStart(){
+  const today=todayStr(); return getWeekStart(today);
+}
+function currentMonth(){return todayStr().slice(0,7);}
+
+// ── LOCATION ────────────────────────────────────────────────────────────────
+function startLocation(){
+  const banner=document.getElementById("locBanner"),msg=document.getElementById("locMsg");
+  if(!navigator.geolocation){banner.className="loc-banner fail";msg.textContent="Geolocation not supported on this device.";return;}
+  navigator.geolocation.watchPosition(pos=>{
+    curLat=pos.coords.latitude; curLng=pos.coords.longitude;
+    const dist=Math.round(haversine(curLat,curLng,OFFICE_LAT,OFFICE_LNG));
+    locationOK=dist<=radius;
+    banner.className="loc-banner "+(locationOK?"ok":"fail");
+    msg.textContent=locationOK
+      ? "You're at the office ("+dist+"m away) \u2713"
+      : "Check-in is only available at the office. You are "+dist+"m away (limit: "+radius+"m).";
+    renderAllGrids();
+    if(selName)selectMember(selName,selGroup);
+  },()=>{
+    locationOK=false;
+    document.getElementById("locBanner").className="loc-banner fail";
+    document.getElementById("locMsg").textContent="Location access denied. Please allow location access to use this app.";
+    if(selName)selectMember(selName,selGroup);
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:20000});
+}
+
+// ── GRIDS ───────────────────────────────────────────────────────────────────
+function renderAllGrids(){["staff","masters","undergrad"].forEach(renderGrid);}
+function renderGrid(g){
+  const el=document.getElementById("grid-"+g); if(!el)return; el.innerHTML="";
+  (members[g]||[]).forEach(name=>{
+    const isIn=!!sessions[name];
+    const t=document.createElement("div");
+    t.className="member-tile"+(isIn?" checked-in":"")+(name===selName?" selected":"");
+    t.innerHTML='<div class="tile-name">'+name+'</div><span class="tile-badge '+(isIn?"in":"out")+'">'+(isIn?"Clocked In":"Clocked Out")+'</span>';
+    t.onclick=()=>selectMember(name,g);
+    el.appendChild(t);
+  });
+}
+
+// ── SELECT ──────────────────────────────────────────────────────────────────
+function selectMember(name,group){
+  selName=name; selGroup=group;
+  const isIn=!!sessions[name];
+  document.getElementById("selectedCard").classList.add("visible");
+  document.getElementById("selName").textContent=name;
+  const sb=document.getElementById("selGroupBadge");
+  sb.textContent=groupLabel(group); sb.className=gbadgeClass(group);
+  const st=document.getElementById("selStatus");
+  if(isIn){st.textContent="Checked in at "+fmtTime(sessions[name].inTs);st.className="selected-status in";}
+  else{st.textContent="Currently clocked out";st.className="selected-status";}
+  document.getElementById("btnCI").disabled=isIn||!locationOK;
+  document.getElementById("btnCO").disabled=!isIn||!locationOK;
+  renderAllGrids();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+// ── CHECK IN/OUT ─────────────────────────────────────────────────────────────
+function doCheckIn(){
+  if(!selName||!locationOK)return;
+  if(sessions[selName]){showToast("Already checked in.","warn");return;}
+  sessions[selName]={inTs:Date.now(),group:selGroup};
+  ss("att5_sessions",sessions);
+  showToast(selName+" checked in \u2713","green");
+  selectMember(selName,selGroup);
+}
+
+function doCheckOut(){
+  if(!selName||!locationOK)return;
+  const sess=sessions[selName];
+  if(!sess){showToast("Not currently checked in.","warn");return;}
+  const outTs=Date.now(), dur=outTs-sess.inTs;
+  const rec={name:selName,group:groupApiLabel(selGroup),date:todayStr(),checkIn:fmtTime(sess.inTs),checkOut:fmtTime(outTs),duration:fmtDurMs(dur),durationMinutes:Math.round(dur/60000)};
+  showToast("Saving\u2026","");
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)})
+    .then(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast(selName+" checked out \u2014 "+rec.duration,"green");selectMember(selName,selGroup);})
+    .catch(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast("Saved locally (check connection)","warn");selectMember(selName,selGroup);});
+}
+
+// ── TOAST ────────────────────────────────────────────────────────────────────
+let toastT;
+function showToast(msg,type=""){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.className="toast show"+(type?" "+type:"");
+  clearTimeout(toastT); toastT=setTimeout(()=>el.className="toast",3000);
+}
+
+// ── LOGIN ────────────────────────────────────────────────────────────────────
+function openAdmin(){
+  document.getElementById("overlay").classList.add("open");
+  if(!currentRole){
+    document.getElementById("loginBox").style.display="";
+    document.getElementById("adminPanel").classList.remove("visible");
+    document.getElementById("modalTitle").textContent="Login";
+    setTimeout(()=>document.getElementById("pwInput").focus(),80);
+  }
+}
+function closeAdmin(){document.getElementById("overlay").classList.remove("open");}
+function overlayClick(e){if(e.target.id==="overlay")closeAdmin();}
+
+function tryLogin(){
+  const pw=document.getElementById("pwInput").value;
+  let role=null;
+  if(pw===adminPw) role="admin";
+  else if(pw===staffPw) role="staff";
+  if(role){
+    currentRole=role;
+    document.getElementById("loginBox").style.display="none";
+    document.getElementById("adminPanel").classList.add("visible");
+    document.getElementById("pwInput").value="";
+    document.getElementById("loginError").style.display="none";
+    document.getElementById("modalTitle").textContent=role==="admin"?"Admin Panel":"Staff Panel";
+    document.getElementById("roleBadge").textContent=role==="admin"?"Admin":"Staff";
+    document.getElementById("roleBadge").className="role-badge "+(role==="admin"?"role-admin":"role-staff");
+    document.getElementById("manageTabBtn").style.display=role==="admin"?"":"none";
+    // Add Staff filter option for admin
+    ["fp-group","fd-group"].forEach(id=>{
+      const sel=document.getElementById(id);
+      Array.from(sel.options).forEach(o=>{if(o.value==="Staff")o.remove();});
+      const opt=document.createElement("option");opt.value="Staff";opt.textContent="Staff";sel.appendChild(opt);
+    });
+    // Default date range: this week
+    const today=todayStr();
+    const wStart=currentWeekStart();
+    ["fp-from","fd-from"].forEach(id=>document.getElementById(id).value=wStart);
+    ["fp-to","fd-to"].forEach(id=>document.getElementById(id).value=today);
+    loadAndRender();
+  } else {
+    document.getElementById("loginError").style.display="block";
+  }
+}
+
+// ── TABS ─────────────────────────────────────────────────────────────────────
+function switchTab(tab,btn){
+  currentTab=tab;
+  document.querySelectorAll(".tab-content").forEach(el=>el.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(el=>el.classList.remove("active"));
+  document.getElementById("tab-"+tab).classList.add("active");
+  btn.classList.add("active");
+  if(tab==="person"||tab==="date") loadAndRender();
+  if(tab==="manage") renderManage();
+}
+
+// ── LOAD & RENDER ─────────────────────────────────────────────────────────────
+function loadAndRender(){
+  document.getElementById("personList").innerHTML='<div class="loading">Loading records&hellip;</div>';
+  document.getElementById("dateList").innerHTML='<div class="loading">Loading records&hellip;</div>';
+  fetch(SCRIPT_URL+"?t="+Date.now())
+    .then(r=>r.json())
+    .then(data=>{
+      allRecords=Array.isArray(data)?data:[];
+      renderPersonView();
+      renderDateView();
+    })
+    .catch(()=>{
+      document.getElementById("personList").innerHTML='<div class="no-rec">Could not load records. Please check your connection.</div>';
+      document.getElementById("dateList").innerHTML='<div class="no-rec">Could not load records. Please check your connection.</div>';
+    });
+}
+
+function getFiltered(groupSel,from,to){
+  let recs=allRecords;
+  // Staff can see all groups
+  if(groupSel) recs=recs.filter(r=>(r.Group||r.group||"")===groupSel);
+  if(from) recs=recs.filter(r=>(r.Date||r.date||"")>=from);
+  if(to)   recs=recs.filter(r=>(r.Date||r.date||"")<=to);
+  return recs;
+}
+
+// ── BY PERSON VIEW ────────────────────────────────────────────────────────────
+function renderPersonView(){
+  const from=document.getElementById("fp-from").value;
+  const to=document.getElementById("fp-to").value;
+  const groupSel=document.getElementById("fp-group").value;
+  const filtered=getFiltered(groupSel,from,to);
+  const allFiltered=getFiltered(groupSel,"",""); // all time for weekly/monthly
+
+  const c=document.getElementById("personList");
+  if(!filtered.length){c.innerHTML='<div class="no-rec">No records found for this period.</div>';return;}
+
+  // Get all unique names in filtered set
+  const names=[...new Set(filtered.map(r=>r.Name||r.name||""))].sort();
+
+  c.innerHTML="";
+  names.forEach(name=>{
+    // Records in selected range
+    const rangeRecs=filtered.filter(r=>(r.Name||r.name||"")===name);
+    const group=rangeRecs[0]?rangeRecs[0].Group||rangeRecs[0].group||"":"";
+    const rangeMins=rangeRecs.reduce((a,r)=>a+(parseInt(r.DurationMinutes||r.durationMinutes)||0),0);
+
+    // All records for this person (for weekly/monthly breakdown)
+    const personAll=allFiltered.filter(r=>(r.Name||r.name||"")===name);
+
+    // Weekly totals
+    const byWeek={};
+    personAll.forEach(r=>{
+      const d=r.Date||r.date||""; if(!d)return;
+      const wk=getWeekStart(d);
+      byWeek[wk]=(byWeek[wk]||0)+(parseInt(r.DurationMinutes||r.durationMinutes)||0);
+    });
+
+    // Monthly totals
+    const byMonth={};
+    personAll.forEach(r=>{
+      const d=r.Date||r.date||""; if(!d)return;
+      const mo=getMonth(d);
+      byMonth[mo]=(byMonth[mo]||0)+(parseInt(r.DurationMinutes||r.durationMinutes)||0);
+    });
+
+    // This week & this month totals
+    const thisWeekMins=byWeek[currentWeekStart()]||0;
+    const thisMonthMins=byMonth[currentMonth()]||0;
+
+    const b=document.createElement("div"); b.className="person-block";
+    b.innerHTML=`
+      <div class="person-head" onclick="this.parentElement.classList.toggle('open')">
+        <div class="ph-left">
+          <div class="ph-name">${name}</div>
+          <div class="ph-group">${group}</div>
+          <div class="ph-stats">
+            <div class="ph-stat">
+              <span class="ph-stat-label">Selected Period</span>
+              <span class="ph-stat-value">${fmtDurMins(rangeMins)}</span>
+            </div>
+            <div class="ph-stat">
+              <span class="ph-stat-label">This Week</span>
+              <span class="ph-stat-value week">${fmtDurMins(thisWeekMins)}</span>
+            </div>
+            <div class="ph-stat">
+              <span class="ph-stat-label">This Month</span>
+              <span class="ph-stat-value month">${fmtDurMins(thisMonthMins)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="ph-right-arrow">&#x25BC;</div>
+      </div>
+      <div class="person-detail">
+        <!-- Daily records in range -->
+        <table class="rec-table">
+          <thead><tr><th>Date</th><th>Check In</th><th>Check Out</th><th>Duration</th></tr></thead>
+          <tbody>
+            ${rangeRecs.length===0
+              ? '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>'
+              : rangeRecs.sort((a,b)=>(b.Date||"").localeCompare(a.Date||"")).map(r=>`
+              <tr>
+                <td>${fmtDateLabel(r.Date||r.date||"")}</td>
+                <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
+                <td style="color:#e74c3c;font-weight:600">${r.CheckOut||r.checkOut||""}</td>
+                <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+
+        <!-- Weekly breakdown -->
+        ${Object.keys(byWeek).length>0?`
+        <div style="padding:12px 20px;border-top:1px solid #f0f0f8;">
+          <div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">Weekly Summary</div>
+          <table class="rec-table">
+            <thead><tr><th>Week</th><th>Total Hours</th></tr></thead>
+            <tbody>
+              ${Object.keys(byWeek).sort().reverse().map(wk=>`
+              <tr>
+                <td>${fmtWeekLabel(wk)}</td>
+                <td style="font-weight:700;color:#4a90e2">${fmtDurMins(byWeek[wk])}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`:""}
+
+        <!-- Monthly breakdown -->
+        ${Object.keys(byMonth).length>0?`
+        <div style="padding:12px 20px;border-top:1px solid #f0f0f8;">
+          <div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">Monthly Summary</div>
+          <table class="rec-table">
+            <thead><tr><th>Month</th><th>Total Hours</th></tr></thead>
+            <tbody>
+              ${Object.keys(byMonth).sort().reverse().map(mo=>`
+              <tr>
+                <td>${fmtMonthLabel(mo)}</td>
+                <td style="font-weight:700;color:#7c3aed">${fmtDurMins(byMonth[mo])}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`:""}
+      </div>`;
+    c.appendChild(b);
+  });
+}
+
+// ── BY DATE VIEW ──────────────────────────────────────────────────────────────
+function renderDateView(){
+  const from=document.getElementById("fd-from").value;
+  const to=document.getElementById("fd-to").value;
+  const groupSel=document.getElementById("fd-group").value;
+  const recs=getFiltered(groupSel,from,to);
+  const c=document.getElementById("dateList");
+  if(!recs.length){c.innerHTML='<div class="no-rec">No records found for this period.</div>';return;}
+
+  const byDate={};
+  recs.forEach(r=>{const d=r.Date||r.date||"";if(!byDate[d])byDate[d]=[];byDate[d].push(r);});
+
+  c.innerHTML="";
+  Object.keys(byDate).sort().reverse().forEach(date=>{
+    const dr=byDate[date];
+    const totalMins=dr.reduce((a,r)=>a+(parseInt(r.DurationMinutes||r.durationMinutes)||0),0);
+    const b=document.createElement("div"); b.className="date-block";
+    b.innerHTML=`
+      <div class="date-head" onclick="this.parentElement.classList.toggle('open')">
+        <div>
+          <div class="dh-name">${fmtDateLabel(date)}</div>
+          <div class="dh-meta">${dr.length} record${dr.length!==1?"s":""}</div>
+        </div>
+        <div class="dh-right">
+          
+          <div class="ph-right-arrow">&#x25BC;</div>
+        </div>
+      </div>
+      <div class="date-records">
+        <table class="rec-table">
+          <thead><tr><th>Name</th><th>Group</th><th>Check In</th><th>Check Out</th><th>Duration</th></tr></thead>
+          <tbody>${dr.sort((a,b)=>(a.CheckIn||"").localeCompare(b.CheckIn||"")).map(r=>`
+            <tr>
+              <td style="font-weight:600">${r.Name||r.name||""}</td>
+              <td style="color:#888;font-size:12px">${r.Group||r.group||""}</td>
+              <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
+              <td style="color:#e74c3c;font-weight:600">${r.CheckOut||r.checkOut||""}</td>
+              <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`;
+    c.appendChild(b);
+  });
+}
+
+// ── EXPORT CSV ────────────────────────────────────────────────────────────────
+function exportCSV(view){
+  const isP=view==="person";
+  const recs=getFiltered(
+    document.getElementById(isP?"fp-group":"fd-group").value,
+    document.getElementById(isP?"fp-from":"fd-from").value,
+    document.getElementById(isP?"fp-to":"fd-to").value
+  );
+  const rows=[["Name","Group","Date","Check In (ET)","Check Out (ET)","Duration","Minutes"]];
+  recs.sort((a,b)=>(a.Name||"").localeCompare(b.Name||"")||(b.Date||"").localeCompare(a.Date||""))
+    .forEach(r=>rows.push([r.Name||r.name,r.Group||r.group,r.Date||r.date,r.CheckIn||r.checkIn,r.CheckOut||r.checkOut,r.Duration||r.duration,r.DurationMinutes||r.durationMinutes]));
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\uFEFF"+rows.map(r=>r.join(",")).join("\n")],{type:"text/csv;charset=utf-8;"}));
+  a.download="attendance_"+todayStr()+".csv"; a.click();
+}
+
+// ── MANAGE ────────────────────────────────────────────────────────────────────
+function renderManage(){
+  ["staff","masters","undergrad"].forEach(g=>{
+    document.getElementById("chips-"+g).innerHTML=(members[g]||[]).map(name=>`<div class="${chipClass(g)}"><span>${name}</span><button class="chip-del" onclick="removeMember('${g}','${name.replace(/'/g,"\\'")}')">&#x00D7;</button></div>`).join("");
+  });
+  document.getElementById("radiusInput").value=radius;
+}
+
+function addMember(g){
+  const inp=document.getElementById("inp-"+g),name=inp.value.trim();
+  if(!name||(members[g]||[]).includes(name))return;
+  members[g].push(name); ss("att5_members",members); inp.value="";
+  renderManage(); renderAllGrids(); showToast(name+" added","green");
+}
+
+function removeMember(g,name){
+  members[g]=(members[g]||[]).filter(m=>m!==name);
+  delete sessions[name]; ss("att5_members",members); ss("att5_sessions",sessions);
+  if(selName===name){selName=null;selGroup=null;document.getElementById("selectedCard").classList.remove("visible");}
+  renderManage(); renderAllGrids();
+}
+
+function saveRadius(){
+  const v=parseInt(document.getElementById("radiusInput").value);
+  if(!v||v<30)return;
+  radius=v; ss("att5_radius",radius);
+  const el=document.getElementById("radiusSaved"); el.style.display="inline"; setTimeout(()=>el.style.display="none",2000);
+  if(curLat!==null){
+    const dist=Math.round(haversine(curLat,curLng,OFFICE_LAT,OFFICE_LNG));
+    locationOK=dist<=radius;
+    document.getElementById("locBanner").className="loc-banner "+(locationOK?"ok":"fail");
+    document.getElementById("locMsg").textContent=locationOK?"You're at the office ("+dist+"m away) \u2713":"Check-in only at the office. You are "+dist+"m away (limit: "+radius+"m).";
+    if(selName)selectMember(selName,selGroup);
+  }
+}
+
+function savePws(){
+  const a=document.getElementById("inp-adminpw").value.trim();
+  const s=document.getElementById("inp-staffpw").value.trim();
+  if(a){adminPw=a;ss("att5_adminpw",adminPw);}
+  if(s){staffPw=s;ss("att5_staffpw",staffPw);}
+  document.getElementById("inp-adminpw").value=""; document.getElementById("inp-staffpw").value="";
+  const el=document.getElementById("pwSaved"); el.style.display="inline"; setTimeout(()=>el.style.display="none",2000);
+  showToast("Passwords updated","green");
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+renderAllGrids();
+startLocation();
+</script>
+</body>
+</html>
