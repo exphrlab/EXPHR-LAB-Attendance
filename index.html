@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EXPHR LAB Attendance</title>
+<title>EXPHR LAB Timesheet</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -32,6 +32,53 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 .selected-status { font-size: 13px; color: #8892b0; margin-bottom: 18px; }
 .selected-status.in { color: #27ae60; }
 .action-row { display: flex; gap: 10px; }
+.timeoff-link-row { margin-top: 12px; text-align: center; }
+.timeoff-link-btn { background: none; border: none; color: #7c3aed; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.timeoff-link-btn:hover { color: #5b21b6; }
+
+/* Time off form modal */
+.tform-group { margin-bottom: 14px; }
+.tform-label { font-size: 13px; font-weight: 600; color: #444; display: block; margin-bottom: 6px; }
+.tform-input, .tform-select, .tform-textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 14px; outline: none; font-family: inherit; }
+.tform-input:focus, .tform-select:focus, .tform-textarea:focus { border-color: #7c3aed; }
+.tform-textarea { resize: vertical; min-height: 70px; }
+.tform-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tform-days-preview { font-size: 13px; color: #7c3aed; font-weight: 700; margin-top: 4px; }
+.tform-submit { width: 100%; padding: 13px; background: #7c3aed; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+.tform-submit:hover { background: #6d28d9; }
+.tform-cancel { width: 100%; padding: 10px; background: none; border: none; color: #8892b0; font-size: 13px; cursor: pointer; margin-top: 8px; }
+
+/* Status badges */
+.status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.status-pending { background: #fff3cd; color: #92722a; }
+.status-approved { background: #d1f5e0; color: #1a7a4a; }
+.status-discuss { background: #ffe2e2; color: #c0392b; }
+
+/* My requests list (inside selected card / personal view) */
+.my-requests { margin-top: 16px; border-top: 1px solid #eee; padding-top: 14px; }
+.my-req-item { background: #faf8ff; border: 1px solid #ece4fb; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+.my-req-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.my-req-dates { font-size: 13px; font-weight: 700; }
+.my-req-type { font-size: 11px; color: #888; margin-top: 2px; }
+.my-req-reason { font-size: 12px; color: #666; margin-top: 6px; font-style: italic; }
+.my-req-comment { font-size: 12px; color: #c0392b; margin-top: 6px; background: #fff5f5; padding: 6px 10px; border-radius: 6px; }
+
+/* Time off admin tab */
+.timeoff-req-card { border: 1.5px solid #e8e8f0; border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+.tr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.tr-name { font-weight: 700; font-size: 15px; }
+.tr-meta { font-size: 12px; color: #8892b0; margin-top: 2px; }
+.tr-dates { font-size: 14px; font-weight: 600; margin-top: 8px; }
+.tr-days { font-size: 12px; color: #7c3aed; font-weight: 700; }
+.tr-reason { font-size: 13px; color: #555; margin-top: 8px; padding: 8px 12px; background: #fafafa; border-radius: 8px; }
+.tr-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.tr-btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; }
+.tr-btn-approve { background: #27ae60; color: #fff; }
+.tr-btn-discuss { background: #fff; color: #e67e22; border: 1.5px solid #e67e22; }
+.tr-comment-input { width: 100%; padding: 8px 10px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 13px; margin-top: 8px; outline: none; }
+.timeoff-summary-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+.timeoff-summary-table th { font-size: 11px; font-weight: 700; color: #8892b0; text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; text-transform: uppercase; letter-spacing: 0.8px; background: #fafafa; }
+.timeoff-summary-table td { font-size: 13px; padding: 10px 12px; border-bottom: 1px solid #f5f5fa; }
 .btn-ci, .btn-co { flex: 1; padding: 13px; border-radius: 10px; border: none; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
 .btn-ci { background: #2ecc71; color: #fff; }
 .btn-co { background: #fff; color: #e74c3c; border: 2px solid #e74c3c; }
@@ -169,7 +216,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 <body>
 
 <div class="header">
-  <div class="header-title">EXPHR LAB Attendance</div>
+  <div class="header-title">EXPHR LAB Timesheet</div>
   <div style="display:flex;align-items:center;gap:12px">
     <div class="header-time" id="headerTime"></div>
     <button class="admin-btn" onclick="openAdmin()">Admin / Staff</button>
@@ -190,6 +237,10 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
       <button class="btn-ci" id="btnCI" onclick="doCheckIn()">Check In</button>
       <button class="btn-co" id="btnCO" onclick="doCheckOut()">Check Out</button>
     </div>
+    <div class="timeoff-link-row" id="timeoffLinkRow" style="display:none">
+      <button class="timeoff-link-btn" onclick="openTimeOffForm()">+ Request Time Off</button>
+    </div>
+    <div class="my-requests" id="myRequests" style="display:none"></div>
   </div>
 
   <div class="section-label">Select your name</div>
@@ -208,6 +259,48 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- TIME OFF REQUEST MODAL -->
+<div class="overlay" id="timeoffOverlay" onclick="if(event.target.id==='timeoffOverlay')closeTimeOffForm()">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Request Time Off</div>
+      <button class="close-btn" onclick="closeTimeOffForm()">&#x2715;</button>
+    </div>
+    <div style="font-size:14px;color:#7c3aed;font-weight:700;margin-bottom:18px" id="timeoffForName"></div>
+
+    <div class="tform-group">
+      <label class="tform-label">Type of Leave</label>
+      <select class="tform-select" id="to-type">
+        <option value="Vacation">Vacation</option>
+        <option value="Sick Leave">Sick Leave</option>
+      </select>
+    </div>
+
+    <div class="tform-group">
+      <div class="tform-row2">
+        <div>
+          <label class="tform-label">Start Date</label>
+          <input class="tform-input" type="date" id="to-start" onchange="updateDaysPreview()">
+        </div>
+        <div>
+          <label class="tform-label">End Date</label>
+          <input class="tform-input" type="date" id="to-end" onchange="updateDaysPreview()">
+        </div>
+      </div>
+      <div class="tform-days-preview" id="to-days-preview"></div>
+    </div>
+
+    <div class="tform-group">
+      <label class="tform-label">Reason / Notes (optional)</label>
+      <textarea class="tform-textarea" id="to-reason" placeholder="Brief note about your time off..."></textarea>
+    </div>
+
+    <button class="tform-submit" onclick="submitTimeOff()">Submit Request</button>
+    <button class="tform-cancel" onclick="closeTimeOffForm()">Cancel</button>
+  </div>
+</div>
+
 
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
   <div class="modal">
@@ -233,6 +326,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
       <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('person',this)">By Person</button>
         <button class="tab-btn" onclick="switchTab('date',this)">By Date</button>
+        <button class="tab-btn" onclick="switchTab('timeoff',this)">Time Off</button>
         <button class="tab-btn" id="manageTabBtn" onclick="switchTab('manage',this)" style="display:none">Manage</button>
       </div>
 
@@ -268,6 +362,22 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
           <button class="export-btn" onclick="exportCSV('date')">Export CSV</button>
         </div>
         <div id="dateList"><div class="loading">Loading&hellip;</div></div>
+      </div>
+
+      <!-- TIME OFF TAB -->
+      <div class="tab-content" id="tab-timeoff">
+        <div style="margin-bottom:20px">
+          <div class="section-label">Pending Requests</div>
+          <div id="pendingRequestsList"><div class="loading">Loading&hellip;</div></div>
+        </div>
+        <div style="margin-bottom:20px">
+          <div class="section-label">Approved Time Off — Summary</div>
+          <div id="approvedSummaryList"></div>
+        </div>
+        <div>
+          <div class="section-label">All Requests</div>
+          <div id="allRequestsList"></div>
+        </div>
       </div>
 
       <!-- MANAGE (admin only) -->
@@ -468,6 +578,18 @@ function selectMember(name,group){
   else{st.textContent="Currently clocked out";st.className="selected-status";}
   document.getElementById("btnCI").disabled=isIn||!locationOK;
   document.getElementById("btnCO").disabled=!isIn||!locationOK;
+
+  // Time off request — Staff only
+  const timeoffRow=document.getElementById("timeoffLinkRow");
+  const myReqDiv=document.getElementById("myRequests");
+  if(group==="staff"){
+    timeoffRow.style.display="block";
+    loadMyTimeOffRequests(name);
+  } else {
+    timeoffRow.style.display="none";
+    myReqDiv.style.display="none";
+  }
+
   renderAllGrids();
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -506,6 +628,224 @@ function showToast(msg,type=""){
   const el=document.getElementById("toast");
   el.textContent=msg; el.className="toast show"+(type?" "+type:"");
   clearTimeout(toastT); toastT=setTimeout(()=>el.className="toast",3000);
+}
+
+// ── TIME OFF: REQUEST FORM ─────────────────────────────────────────────────
+let allTimeOffRequests = ls("att5_timeoff_cache", []);
+
+function openTimeOffForm(){
+  if(!selName)return;
+  document.getElementById("timeoffForName").textContent="Requesting for: "+selName;
+  document.getElementById("to-type").value="Vacation";
+  document.getElementById("to-start").value="";
+  document.getElementById("to-end").value="";
+  document.getElementById("to-reason").value="";
+  document.getElementById("to-days-preview").textContent="";
+  document.getElementById("timeoffOverlay").classList.add("open");
+}
+function closeTimeOffForm(){
+  document.getElementById("timeoffOverlay").classList.remove("open");
+}
+
+function countDays(startStr,endStr){
+  if(!startStr||!endStr)return 0;
+  const s=new Date(startStr+"T00:00:00"), e=new Date(endStr+"T00:00:00");
+  const diff=Math.round((e-s)/86400000)+1;
+  return diff>0?diff:0;
+}
+
+function updateDaysPreview(){
+  const s=document.getElementById("to-start").value;
+  const e=document.getElementById("to-end").value;
+  const days=countDays(s,e);
+  document.getElementById("to-days-preview").textContent = days>0 ? (days+" day"+(days!==1?"s":"")+" requested") : "";
+}
+
+function submitTimeOff(){
+  const type=document.getElementById("to-type").value;
+  const start=document.getElementById("to-start").value;
+  const end=document.getElementById("to-end").value;
+  const reason=document.getElementById("to-reason").value.trim();
+  if(!start||!end){showToast("Please select start and end dates.","warn");return;}
+  const days=countDays(start,end);
+  if(days<=0){showToast("End date must be after start date.","warn");return;}
+
+  const req={
+    timeoffAction:"submit",
+    name:selName, group:groupApiLabel(selGroup),
+    leaveType:type, startDate:start, endDate:end, days:days,
+    reason:reason, status:"Pending", comment:"",
+    submittedAt: new Date().toLocaleString("en-US",{timeZone:TZ})
+  };
+
+  showToast("Submitting\u2026","");
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(req)})
+    .then(()=>{
+      showToast("Time off request submitted \u2713","green");
+      closeTimeOffForm();
+      loadMyTimeOffRequests(selName);
+    })
+    .catch(()=>{
+      showToast("Could not submit. Check connection.","warn");
+    });
+}
+
+// ── TIME OFF: MY REQUESTS (staff view) ──────────────────────────────────────
+function loadMyTimeOffRequests(name){
+  const div=document.getElementById("myRequests");
+  div.style.display="block";
+  div.innerHTML='<div class="loading" style="padding:12px 0">Loading your requests&hellip;</div>';
+  fetch(SCRIPT_URL+"?action=timeoff&t="+Date.now())
+    .then(r=>r.json())
+    .then(data=>{
+      const all=Array.isArray(data)?data:[];
+      allTimeOffRequests=all; ss("att5_timeoff_cache",all);
+      const mine=all.filter(r=>(r.Name||r.name||"")===name)
+        .sort((a,b)=>(b.StartDate||b.startDate||"").localeCompare(a.StartDate||a.startDate||""));
+      if(!mine.length){div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">No time off requests yet.</div>';return;}
+      div.innerHTML='<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Your Requests</div>'
+        + mine.map(r=>renderMyRequestItem(r)).join("");
+    })
+    .catch(()=>{div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">Could not load requests.</div>';});
+}
+
+function statusBadgeHtml(status){
+  const s=status||"Pending";
+  let cls="status-pending", label=s;
+  if(s==="Approved"){cls="status-approved";}
+  else if(s==="Needs Discussion"){cls="status-discuss";}
+  else {cls="status-pending"; label="Pending";}
+  return '<span class="status-badge '+cls+'">'+label+'</span>';
+}
+
+function renderMyRequestItem(r){
+  const start=r.StartDate||r.startDate||"", end=r.EndDate||r.endDate||"";
+  const type=r.LeaveType||r.leaveType||"";
+  const days=r.Days||r.days||"";
+  const status=r.Status||r.status||"Pending";
+  const reason=r.Reason||r.reason||"";
+  const comment=r.Comment||r.comment||"";
+  return `<div class="my-req-item">
+    <div class="my-req-top">
+      <div class="my-req-dates">${fmtDateLabel(start)} ${start!==end?"&rarr; "+fmtDateLabel(end):""}</div>
+      ${statusBadgeHtml(status)}
+    </div>
+    <div class="my-req-type">${type} &middot; ${days} day${days!=1?"s":""}</div>
+    ${reason?`<div class="my-req-reason">"${reason}"</div>`:""}
+    ${comment?`<div class="my-req-comment">PI note: ${comment}</div>`:""}
+  </div>`;
+}
+
+// ── TIME OFF: ADMIN/STAFF VIEW ───────────────────────────────────────────────
+function loadTimeOffRequests(){
+  document.getElementById("pendingRequestsList").innerHTML='<div class="loading">Loading&hellip;</div>';
+  document.getElementById("approvedSummaryList").innerHTML="";
+  document.getElementById("allRequestsList").innerHTML="";
+  fetch(SCRIPT_URL+"?action=timeoff&t="+Date.now())
+    .then(r=>r.json())
+    .then(data=>{
+      allTimeOffRequests=Array.isArray(data)?data:[];
+      ss("att5_timeoff_cache",allTimeOffRequests);
+      renderTimeOffAdmin();
+    })
+    .catch(()=>{
+      document.getElementById("pendingRequestsList").innerHTML='<div class="no-rec">Could not load requests.</div>';
+    });
+}
+
+function renderTimeOffAdmin(){
+  const all=allTimeOffRequests;
+  const pending=all.filter(r=>(r.Status||r.status||"Pending")==="Pending");
+  const approved=all.filter(r=>(r.Status||r.status||"")==="Approved");
+
+  // Pending
+  const pDiv=document.getElementById("pendingRequestsList");
+  pDiv.innerHTML = pending.length===0
+    ? '<div class="no-rec">No pending requests.</div>'
+    : pending.map(r=>renderAdminRequestCard(r,true)).join("");
+
+  // Approved summary by person
+  const byName={};
+  approved.forEach(r=>{
+    const n=r.Name||r.name||"";
+    const d=parseInt(r.Days||r.days)||0;
+    if(!byName[n])byName[n]={vac:0,sick:0,total:0};
+    const type=r.LeaveType||r.leaveType||"";
+    if(type==="Sick Leave")byName[n].sick+=d; else byName[n].vac+=d;
+    byName[n].total+=d;
+  });
+  const sDiv=document.getElementById("approvedSummaryList");
+  const names=Object.keys(byName).sort();
+  if(!names.length){
+    sDiv.innerHTML='<div class="no-rec">No approved time off yet.</div>';
+  } else {
+    sDiv.innerHTML=`<table class="timeoff-summary-table">
+      <thead><tr><th>Name</th><th>Vacation Days</th><th>Sick Days</th><th>Total Days</th></tr></thead>
+      <tbody>${names.map(n=>`<tr>
+        <td style="font-weight:600">${n}</td>
+        <td>${byName[n].vac}</td>
+        <td>${byName[n].sick}</td>
+        <td style="font-weight:700;color:#7c3aed">${byName[n].total}</td>
+      </tr>`).join("")}</tbody>
+    </table>`;
+  }
+
+  // All requests (everything, most recent first)
+  const aDiv=document.getElementById("allRequestsList");
+  const allSorted=[...all].sort((a,b)=>(b.StartDate||b.startDate||"").localeCompare(a.StartDate||a.startDate||""));
+  aDiv.innerHTML = allSorted.length===0
+    ? '<div class="no-rec">No requests yet.</div>'
+    : allSorted.map(r=>renderAdminRequestCard(r,false)).join("");
+}
+
+function renderAdminRequestCard(r,showActions){
+  const name=r.Name||r.name||"";
+  const group=r.Group||r.group||"";
+  const type=r.LeaveType||r.leaveType||"";
+  const start=r.StartDate||r.startDate||"";
+  const end=r.EndDate||r.endDate||"";
+  const days=r.Days||r.days||"";
+  const reason=r.Reason||r.reason||"";
+  const status=r.Status||r.status||"Pending";
+  const comment=r.Comment||r.comment||"";
+  const rowId=r.RequestId||r.requestId||(name+"_"+start);
+
+  return `<div class="timeoff-req-card">
+    <div class="tr-top">
+      <div>
+        <div class="tr-name">${name} <span style="font-size:11px;color:#aaa;font-weight:400">${group}</span></div>
+        <div class="tr-meta">${type}</div>
+      </div>
+      ${statusBadgeHtml(status)}
+    </div>
+    <div class="tr-dates">${fmtDateLabel(start)} ${start!==end?"&rarr; "+fmtDateLabel(end):""}</div>
+    <div class="tr-days">${days} day${days!=1?"s":""}</div>
+    ${reason?`<div class="tr-reason">"${reason}"</div>`:""}
+    ${comment?`<div class="tr-reason" style="color:#c0392b">PI note: ${comment}</div>`:""}
+    ${showActions && currentRole==="admin" ? `
+    <input class="tr-comment-input" placeholder="Optional note to staff..." id="comment-${rowId}">
+    <div class="tr-actions">
+      <button class="tr-btn tr-btn-approve" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Approved')">Approve</button>
+      <button class="tr-btn tr-btn-discuss" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Needs Discussion')">Needs Discussion</button>
+    </div>` : ""}
+  </div>`;
+}
+
+function escapeJs(str){return String(str).replace(/'/g,"\\'");}
+
+function updateTimeOffStatus(rowId,name,start,newStatus){
+  const commentEl=document.getElementById("comment-"+rowId);
+  const comment=commentEl?commentEl.value.trim():"";
+  showToast("Updating\u2026","");
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
+    timeoffAction:"update", requestId:rowId, name:name, startDate:start,
+    status:newStatus, comment:comment
+  })})
+    .then(()=>{
+      showToast("Status updated to "+newStatus,"green");
+      loadTimeOffRequests();
+    })
+    .catch(()=>showToast("Could not update. Check connection.","warn"));
 }
 
 // ── LOGIN ────────────────────────────────────────────────────────────────────
@@ -562,6 +902,7 @@ function switchTab(tab,btn){
   btn.classList.add("active");
   if(tab==="person"||tab==="date") loadAndRender();
   if(tab==="manage") renderManage();
+  if(tab==="timeoff") loadTimeOffRequests();
 }
 
 // ── LOAD & RENDER ─────────────────────────────────────────────────────────────
