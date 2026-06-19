@@ -296,7 +296,12 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
             <button class="save-btn" onclick="saveRadius()">Save</button>
             <span class="saved-label" id="radiusSaved">Saved &#x2713;</span>
           </div>
-          <div style="margin-top:8px;font-size:12px;color:#8892b0">Office: 57 Executive Park Dr NE, Atlanta, GA 30329</div>
+          <div style="margin-top:8px;font-size:12px;color:#8892b0;line-height:1.6">
+            Lab locations:<br>
+            &bull; 57 Executive Park Dr NE, Atlanta, GA 30329<br>
+            &bull; 6 Executive Park Dr NE, Atlanta, GA 30329<br>
+            &bull; 12 Executive Park Dr NE, Atlanta, GA 30329
+          </div>
         </div>
 
         <div class="settings-section">
@@ -320,7 +325,11 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzu-0Xjefo6N1m8Nd5BU2hj42LwT29iI4bpu1qZuTsnv08sfWyDkWFTBCI-D9pQggs/exec";
 const TZ = "America/New_York";
-const OFFICE_LAT = 33.8277, OFFICE_LNG = -84.3392;
+const OFFICE_LOCATIONS = [
+  { name: "57 Executive Park", lat: 33.8277,  lng: -84.3392  },
+  { name: "6 Executive Park",  lat: 33.82924, lng: -84.3367  },
+  { name: "12 Executive Park", lat: 33.82825, lng: -84.33793 }
+];
 
 function ls(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch{return d;}}
 function ss(k,v){localStorage.setItem(k,JSON.stringify(v));}
@@ -393,26 +402,40 @@ function currentWeekStart(){
 function currentMonth(){return todayStr().slice(0,7);}
 
 // ── LOCATION ────────────────────────────────────────────────────────────────
+let currentLocationName = null; // which office location user is at
+
+function findNearestOffice(lat,lng){
+  let nearest=null, minDist=Infinity;
+  OFFICE_LOCATIONS.forEach(loc=>{
+    const d=haversine(lat,lng,loc.lat,loc.lng);
+    if(d<minDist){minDist=d;nearest=loc;}
+  });
+  return {location:nearest, distance:Math.round(minDist)};
+}
+
 function startLocation(){
   const banner=document.getElementById("locBanner"),msg=document.getElementById("locMsg");
   if(!navigator.geolocation){banner.className="loc-banner fail";msg.textContent="Geolocation not supported on this device.";return;}
   navigator.geolocation.watchPosition(pos=>{
     curLat=pos.coords.latitude; curLng=pos.coords.longitude;
-    const dist=Math.round(haversine(curLat,curLng,OFFICE_LAT,OFFICE_LNG));
-    locationOK=dist<=radius;
+    const {location,distance}=findNearestOffice(curLat,curLng);
+    locationOK=distance<=radius;
+    currentLocationName=locationOK?location.name:null;
     banner.className="loc-banner "+(locationOK?"ok":"fail");
     msg.textContent=locationOK
-      ? "You're at the office ("+dist+"m away) \u2713"
-      : "Check-in is only available at the office. You are "+dist+"m away (limit: "+radius+"m).";
+      ? "You're at "+location.name+" ("+distance+"m away) \u2713"
+      : "Check-in is only available at lab locations. Nearest: "+location.name+", "+distance+"m away (limit: "+radius+"m).";
     renderAllGrids();
     if(selName)selectMember(selName,selGroup);
   },()=>{
-    locationOK=false;
+    locationOK=false; currentLocationName=null;
     document.getElementById("locBanner").className="loc-banner fail";
     document.getElementById("locMsg").textContent="Location access denied. Please allow location access to use this app.";
     if(selName)selectMember(selName,selGroup);
   },{enableHighAccuracy:true,timeout:15000,maximumAge:20000});
 }
+
+
 
 // ── GRIDS ───────────────────────────────────────────────────────────────────
 function renderAllGrids(){["staff","masters","undergrad"].forEach(renderGrid);}
@@ -437,7 +460,11 @@ function selectMember(name,group){
   const sb=document.getElementById("selGroupBadge");
   sb.textContent=groupLabel(group); sb.className=gbadgeClass(group);
   const st=document.getElementById("selStatus");
-  if(isIn){st.textContent="Checked in at "+fmtTime(sessions[name].inTs);st.className="selected-status in";}
+  if(isIn){
+    const locStr=sessions[name].inLocation?(" @ "+sessions[name].inLocation):"";
+    st.textContent="Checked in at "+fmtTime(sessions[name].inTs)+locStr;
+    st.className="selected-status in";
+  }
   else{st.textContent="Currently clocked out";st.className="selected-status";}
   document.getElementById("btnCI").disabled=isIn||!locationOK;
   document.getElementById("btnCO").disabled=!isIn||!locationOK;
@@ -449,9 +476,9 @@ function selectMember(name,group){
 function doCheckIn(){
   if(!selName||!locationOK)return;
   if(sessions[selName]){showToast("Already checked in.","warn");return;}
-  sessions[selName]={inTs:Date.now(),group:selGroup};
+  sessions[selName]={inTs:Date.now(),group:selGroup,inLocation:currentLocationName};
   ss("att5_sessions",sessions);
-  showToast(selName+" checked in \u2713","green");
+  showToast(selName+" checked in at "+currentLocationName+" \u2713","green");
   selectMember(selName,selGroup);
 }
 
@@ -460,7 +487,13 @@ function doCheckOut(){
   const sess=sessions[selName];
   if(!sess){showToast("Not currently checked in.","warn");return;}
   const outTs=Date.now(), dur=outTs-sess.inTs;
-  const rec={name:selName,group:groupApiLabel(selGroup),date:todayStr(),checkIn:fmtTime(sess.inTs),checkOut:fmtTime(outTs),duration:fmtDurMs(dur),durationMinutes:Math.round(dur/60000)};
+  const rec={
+    name:selName,group:groupApiLabel(selGroup),date:todayStr(),
+    checkIn:fmtTime(sess.inTs),checkOut:fmtTime(outTs),
+    duration:fmtDurMs(dur),durationMinutes:Math.round(dur/60000),
+    checkInLocation:sess.inLocation||"",
+    checkOutLocation:currentLocationName||""
+  };
   showToast("Saving\u2026","");
   fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)})
     .then(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast(selName+" checked out \u2014 "+rec.duration,"green");selectMember(selName,selGroup);})
@@ -627,19 +660,22 @@ function renderPersonView(){
       <div class="person-detail">
         <!-- Daily records in range -->
         <table class="rec-table">
-          <thead><tr><th>Date</th><th>Check In</th><th>Check Out</th><th>Duration</th></tr></thead>
+          <thead><tr><th>Date</th><th>Check In</th><th>In Location</th><th>Check Out</th><th>Out Location</th><th>Duration</th></tr></thead>
           <tbody>
             ${rangeRecs.length===0
-              ? '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>'
+              ? '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>'
               : rangeRecs.sort((a,b)=>(b.Date||"").localeCompare(a.Date||"")).map(r=>`
               <tr>
                 <td>${fmtDateLabel(r.Date||r.date||"")}</td>
                 <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
+                <td style="color:#888;font-size:12px">${r.CheckInLocation||r.checkInLocation||"–"}</td>
                 <td style="color:#e74c3c;font-weight:600">${r.CheckOut||r.checkOut||""}</td>
+                <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
                 <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
               </tr>`).join("")}
           </tbody>
         </table>
+
 
         <!-- Weekly breakdown -->
         ${Object.keys(byWeek).length>0?`
@@ -707,13 +743,15 @@ function renderDateView(){
       </div>
       <div class="date-records">
         <table class="rec-table">
-          <thead><tr><th>Name</th><th>Group</th><th>Check In</th><th>Check Out</th><th>Duration</th></tr></thead>
+          <thead><tr><th>Name</th><th>Group</th><th>Check In</th><th>In Location</th><th>Check Out</th><th>Out Location</th><th>Duration</th></tr></thead>
           <tbody>${dr.sort((a,b)=>(a.CheckIn||"").localeCompare(b.CheckIn||"")).map(r=>`
             <tr>
               <td style="font-weight:600">${r.Name||r.name||""}</td>
               <td style="color:#888;font-size:12px">${r.Group||r.group||""}</td>
               <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
+              <td style="color:#888;font-size:12px">${r.CheckInLocation||r.checkInLocation||"–"}</td>
               <td style="color:#e74c3c;font-weight:600">${r.CheckOut||r.checkOut||""}</td>
+              <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
               <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
             </tr>`).join("")}
           </tbody>
@@ -731,9 +769,9 @@ function exportCSV(view){
     document.getElementById(isP?"fp-from":"fd-from").value,
     document.getElementById(isP?"fp-to":"fd-to").value
   );
-  const rows=[["Name","Group","Date","Check In (ET)","Check Out (ET)","Duration","Minutes"]];
+  const rows=[["Name","Group","Date","Check In (ET)","In Location","Check Out (ET)","Out Location","Duration","Minutes"]];
   recs.sort((a,b)=>(a.Name||"").localeCompare(b.Name||"")||(b.Date||"").localeCompare(a.Date||""))
-    .forEach(r=>rows.push([r.Name||r.name,r.Group||r.group,r.Date||r.date,r.CheckIn||r.checkIn,r.CheckOut||r.checkOut,r.Duration||r.duration,r.DurationMinutes||r.durationMinutes]));
+    .forEach(r=>rows.push([r.Name||r.name,r.Group||r.group,r.Date||r.date,r.CheckIn||r.checkIn,r.CheckInLocation||r.checkInLocation||"",r.CheckOut||r.checkOut,r.CheckOutLocation||r.checkOutLocation||"",r.Duration||r.duration,r.DurationMinutes||r.durationMinutes]));
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+rows.map(r=>r.join(",")).join("\n")],{type:"text/csv;charset=utf-8;"}));
   a.download="attendance_"+todayStr()+".csv"; a.click();
@@ -767,13 +805,15 @@ function saveRadius(){
   radius=v; ss("att5_radius",radius);
   const el=document.getElementById("radiusSaved"); el.style.display="inline"; setTimeout(()=>el.style.display="none",2000);
   if(curLat!==null){
-    const dist=Math.round(haversine(curLat,curLng,OFFICE_LAT,OFFICE_LNG));
-    locationOK=dist<=radius;
+    const {location,distance}=findNearestOffice(curLat,curLng);
+    locationOK=distance<=radius;
+    currentLocationName=locationOK?location.name:null;
     document.getElementById("locBanner").className="loc-banner "+(locationOK?"ok":"fail");
-    document.getElementById("locMsg").textContent=locationOK?"You're at the office ("+dist+"m away) \u2713":"Check-in only at the office. You are "+dist+"m away (limit: "+radius+"m).";
+    document.getElementById("locMsg").textContent=locationOK?"You're at "+location.name+" ("+distance+"m away) \u2713":"Check-in only available at lab locations. Nearest: "+location.name+", "+distance+"m away (limit: "+radius+"m).";
     if(selName)selectMember(selName,selGroup);
   }
 }
+
 
 function savePws(){
   const a=document.getElementById("inp-adminpw").value.trim();
