@@ -219,6 +219,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   <div class="header-title">EXPHR LAB Timesheet</div>
   <div style="display:flex;align-items:center;gap:12px">
     <div class="header-time" id="headerTime"></div>
+    <button class="admin-btn" onclick="openTimeOffSection()">Time Off</button>
     <button class="admin-btn" onclick="openAdmin()">Admin / Staff</button>
   </div>
 </div>
@@ -237,10 +238,6 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
       <button class="btn-ci" id="btnCI" onclick="doCheckIn()">Check In</button>
       <button class="btn-co" id="btnCO" onclick="doCheckOut()">Check Out</button>
     </div>
-    <div class="timeoff-link-row" id="timeoffLinkRow" style="display:none">
-      <button class="timeoff-link-btn" onclick="openTimeOffForm()">+ Request Time Off</button>
-    </div>
-    <div class="my-requests" id="myRequests" style="display:none"></div>
   </div>
 
   <div class="section-label">Select your name</div>
@@ -261,7 +258,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 <div class="toast" id="toast"></div>
 
 <!-- TIME OFF REQUEST MODAL -->
-<div class="overlay" id="timeoffOverlay" onclick="if(event.target.id==='timeoffOverlay')closeTimeOffForm()">
+<div class="overlay" id="timeoffOverlay" style="z-index:210" onclick="if(event.target.id==='timeoffOverlay')closeTimeOffForm()">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <div class="modal-title">Request Time Off</div>
@@ -301,6 +298,35 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   </div>
 </div>
 
+<!-- TIME OFF SECTION (top menu — self-serve, name-scoped, own requests only) -->
+<div class="overlay" id="timeoffSectionOverlay" onclick="if(event.target.id==='timeoffSectionOverlay')closeTimeOffSection()">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Time Off</div>
+      <button class="close-btn" onclick="closeTimeOffSection()">&#x2715;</button>
+    </div>
+
+    <div id="tosPicker">
+      <div class="login-box" style="max-width:100%">
+        <h2>&#x1F512; Staff Login</h2>
+        <div class="field-label">Password</div>
+        <input class="login-input" type="password" id="tosPwInput" placeholder="Enter your password" onkeydown="if(event.key==='Enter')tryTosLogin()">
+        <div class="login-error" id="tosLoginError">Incorrect password</div>
+        <button class="login-btn" onclick="tryTosLogin()">Log in</button>
+      </div>
+    </div>
+
+    <div id="tosDetail" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:16px;font-weight:800" id="tosNameLabel"></div>
+        <button class="timeoff-link-btn" onclick="tosChangeName()">Log out</button>
+      </div>
+      <button class="timeoff-link-btn" style="margin-bottom:14px" onclick="openTimeOffForm()">+ Request Time Off</button>
+      <div class="my-requests" id="tosRequests" style="display:block;margin-top:0;border-top:none;padding-top:0"></div>
+    </div>
+  </div>
+</div>
+
 
 <div class="overlay" id="overlay" onclick="overlayClick(event)">
   <div class="modal">
@@ -326,7 +352,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
       <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('person',this)">By Person</button>
         <button class="tab-btn" onclick="switchTab('date',this)">By Date</button>
-        <button class="tab-btn" onclick="switchTab('timeoff',this)">Time Off</button>
+        <button class="tab-btn" id="timeoffTabBtn" onclick="switchTab('timeoff',this)">Time Off</button>
         <button class="tab-btn" id="manageTabBtn" onclick="switchTab('manage',this)" style="display:none">Manage</button>
       </div>
 
@@ -419,8 +445,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
           <div style="display:grid;gap:8px;max-width:360px;margin-top:10px">
             <label style="font-size:13px;color:#555;font-weight:600">New Admin Password</label>
             <input class="settings-input" type="password" id="inp-adminpw" placeholder="Leave blank to keep current" style="width:100%">
-            <label style="font-size:13px;color:#555;font-weight:600;margin-top:4px">New Staff Password</label>
-            <input class="settings-input" type="password" id="inp-staffpw" placeholder="Leave blank to keep current" style="width:100%">
+            <div id="staffPwFields"></div>
             <div class="settings-row" style="margin-top:4px">
               <button class="save-btn" onclick="savePws()">Save Passwords</button>
               <span class="saved-label" id="pwSaved">Saved &#x2713;</span>
@@ -451,10 +476,11 @@ let members  = ls("att5_members", {
 });
 let sessions = ls("att5_sessions", {});
 let radius   = ls("att5_radius",   300);
-let adminPw  = ls("att5_adminpw",  "exphr2410");
-let staffPw  = ls("att5_staffpw",  "exphr26");
+// Passwords are no longer stored or checked in the browser — see tryLogin()
+// and tryTosLogin(), which ask the Apps Script server to verify them.
+let currentPassword=null;
 
-let selName=null, selGroup=null, currentRole=null;
+let selName=null, selGroup=null, currentRole=null, loggedInStaffName=null;
 let locationOK=false, curLat=null, curLng=null;
 let allRecords=[], currentTab="person";
 
@@ -579,17 +605,6 @@ function selectMember(name,group){
   document.getElementById("btnCI").disabled=isIn||!locationOK;
   document.getElementById("btnCO").disabled=!isIn||!locationOK;
 
-  // Time off request — Staff only
-  const timeoffRow=document.getElementById("timeoffLinkRow");
-  const myReqDiv=document.getElementById("myRequests");
-  if(group==="staff"){
-    timeoffRow.style.display="block";
-    loadMyTimeOffRequests(name);
-  } else {
-    timeoffRow.style.display="none";
-    myReqDiv.style.display="none";
-  }
-
   renderAllGrids();
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -631,7 +646,7 @@ function showToast(msg,type=""){
 }
 
 // ── TIME OFF: REQUEST FORM ─────────────────────────────────────────────────
-let allTimeOffRequests = ls("att5_timeoff_cache", []);
+let allTimeOffRequests = [];
 
 function openTimeOffForm(){
   if(!selName)return;
@@ -672,6 +687,7 @@ function submitTimeOff(){
 
   const req={
     timeoffAction:"submit",
+    password: tosPassword||"",
     name:selName, group:groupApiLabel(selGroup),
     leaveType:type, startDate:start, endDate:end, days:days,
     reason:reason, status:"Pending", comment:"",
@@ -683,7 +699,7 @@ function submitTimeOff(){
     .then(()=>{
       showToast("Time off request submitted \u2713","green");
       closeTimeOffForm();
-      loadMyTimeOffRequests(selName);
+      loadMyTimeOffRequests(selName, "tosRequests");
     })
     .catch(()=>{
       showToast("Could not submit. Check connection.","warn");
@@ -691,15 +707,17 @@ function submitTimeOff(){
 }
 
 // ── TIME OFF: MY REQUESTS (staff view) ──────────────────────────────────────
-function loadMyTimeOffRequests(name){
-  const div=document.getElementById("myRequests");
+function loadMyTimeOffRequests(name, targetId){
+  targetId = targetId || "tosRequests";
+  const div=document.getElementById(targetId);
   div.style.display="block";
   div.innerHTML='<div class="loading" style="padding:12px 0">Loading your requests&hellip;</div>';
-  fetch(SCRIPT_URL+"?action=timeoff&t="+Date.now())
+  fetch(SCRIPT_URL+"?action=timeoff&password="+encodeURIComponent(tosPassword||"")+"&t="+Date.now())
     .then(r=>r.json())
     .then(data=>{
-      const all=Array.isArray(data)?data:[];
-      allTimeOffRequests=all; ss("att5_timeoff_cache",all);
+      if(data && data.error){div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">Session expired — please log in again.</div>';return;}
+      const all=(data && Array.isArray(data.requests))?data.requests:[];
+      allTimeOffRequests=all;
       const mine=all.filter(r=>(r.Name||r.name||"")===name)
         .sort((a,b)=>(b.StartDate||b.startDate||"").localeCompare(a.StartDate||a.startDate||""));
       if(!mine.length){div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">No time off requests yet.</div>';return;}
@@ -707,6 +725,59 @@ function loadMyTimeOffRequests(name){
         + mine.map(r=>renderMyRequestItem(r)).join("");
     })
     .catch(()=>{div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">Could not load requests.</div>';});
+}
+
+// ── TIME OFF SECTION (top menu — password protected, own requests only) ────
+let tosPrevSelName=null, tosPrevSelGroup=null, tosActive=false;
+let tosPassword=null;
+
+function openTimeOffSection(){
+  tosPrevSelName=selName; tosPrevSelGroup=selGroup; tosActive=true;
+  tosPassword=null;
+  tosChangeName();
+  document.getElementById("timeoffSectionOverlay").classList.add("open");
+  setTimeout(()=>{const el=document.getElementById("tosPwInput"); if(el)el.focus();},80);
+}
+function closeTimeOffSection(){
+  document.getElementById("timeoffSectionOverlay").classList.remove("open");
+  if(tosActive){ selName=tosPrevSelName; selGroup=tosPrevSelGroup; tosActive=false; }
+  tosPassword=null;
+}
+function tryTosLogin(){
+  const pw=document.getElementById("tosPwInput").value;
+  if(!pw)return;
+  document.getElementById("tosLoginError").style.display="none";
+  fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(pw)+"&t="+Date.now())
+    .then(r=>r.json())
+    .then(auth=>{
+      if(!auth || !auth.ok || auth.role!=="staff"){
+        document.getElementById("tosLoginError").textContent="Incorrect password";
+        document.getElementById("tosLoginError").style.display="block";
+        return;
+      }
+      tosPassword=pw;
+      document.getElementById("tosPwInput").value="";
+      showTosDetail(auth.name);
+    })
+    .catch(()=>{
+      document.getElementById("tosLoginError").textContent="Could not reach the server. Check connection.";
+      document.getElementById("tosLoginError").style.display="block";
+    });
+}
+function tosChangeName(){
+  tosPassword=null;
+  document.getElementById("tosPicker").style.display="";
+  document.getElementById("tosDetail").style.display="none";
+  const pwInput=document.getElementById("tosPwInput");
+  if(pwInput) pwInput.value="";
+  document.getElementById("tosLoginError").style.display="none";
+}
+function showTosDetail(name){
+  selName=name; selGroup="staff";
+  document.getElementById("tosPicker").style.display="none";
+  document.getElementById("tosDetail").style.display="block";
+  document.getElementById("tosNameLabel").textContent=name;
+  loadMyTimeOffRequests(name,"tosRequests");
 }
 
 function statusBadgeHtml(status){
@@ -741,11 +812,14 @@ function loadTimeOffRequests(){
   document.getElementById("pendingRequestsList").innerHTML='<div class="loading">Loading&hellip;</div>';
   document.getElementById("approvedSummaryList").innerHTML="";
   document.getElementById("allRequestsList").innerHTML="";
-  fetch(SCRIPT_URL+"?action=timeoff&t="+Date.now())
+  fetch(SCRIPT_URL+"?action=timeoff&password="+encodeURIComponent(currentPassword||"")+"&t="+Date.now())
     .then(r=>r.json())
     .then(data=>{
-      allTimeOffRequests=Array.isArray(data)?data:[];
-      ss("att5_timeoff_cache",allTimeOffRequests);
+      if(data && data.error){
+        document.getElementById("pendingRequestsList").innerHTML='<div class="no-rec">Could not load requests (session expired — please log in again).</div>';
+        return;
+      }
+      allTimeOffRequests=(data && Array.isArray(data.requests))?data.requests:[];
       renderTimeOffAdmin();
     })
     .catch(()=>{
@@ -754,6 +828,8 @@ function loadTimeOffRequests(){
 }
 
 function renderTimeOffAdmin(){
+  // The server already returns only what this role/name is allowed to see —
+  // Admin gets everyone's requests, a staff login gets only their own.
   const all=allTimeOffRequests;
   const pending=all.filter(r=>(r.Status||r.status||"Pending")==="Pending");
   const approved=all.filter(r=>(r.Status||r.status||"")==="Approved");
@@ -839,7 +915,7 @@ function updateTimeOffStatus(rowId,name,start,newStatus){
   showToast("Updating\u2026","");
   fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
     timeoffAction:"update", requestId:rowId, name:name, startDate:start,
-    status:newStatus, comment:comment
+    status:newStatus, comment:comment, password:currentPassword||""
   })})
     .then(()=>{
       showToast("Status updated to "+newStatus,"green");
@@ -855,6 +931,8 @@ function openAdmin(){
     document.getElementById("loginBox").style.display="";
     document.getElementById("adminPanel").classList.remove("visible");
     document.getElementById("modalTitle").textContent="Login";
+    const err=document.getElementById("loginError");
+    err.textContent="Incorrect password"; err.style.display="none";
     setTimeout(()=>document.getElementById("pwInput").focus(),80);
   }
 }
@@ -863,34 +941,44 @@ function overlayClick(e){if(e.target.id==="overlay")closeAdmin();}
 
 function tryLogin(){
   const pw=document.getElementById("pwInput").value;
-  let role=null;
-  if(pw===adminPw) role="admin";
-  else if(pw===staffPw) role="staff";
-  if(role){
-    currentRole=role;
-    document.getElementById("loginBox").style.display="none";
-    document.getElementById("adminPanel").classList.add("visible");
-    document.getElementById("pwInput").value="";
-    document.getElementById("loginError").style.display="none";
-    document.getElementById("modalTitle").textContent=role==="admin"?"Admin Panel":"Staff Panel";
-    document.getElementById("roleBadge").textContent=role==="admin"?"Admin":"Staff";
-    document.getElementById("roleBadge").className="role-badge "+(role==="admin"?"role-admin":"role-staff");
-    document.getElementById("manageTabBtn").style.display=role==="admin"?"":"none";
-    // Add Staff filter option for admin
-    ["fp-group","fd-group"].forEach(id=>{
-      const sel=document.getElementById(id);
-      Array.from(sel.options).forEach(o=>{if(o.value==="Staff")o.remove();});
-      const opt=document.createElement("option");opt.value="Staff";opt.textContent="Staff";sel.appendChild(opt);
+  if(!pw)return;
+  document.getElementById("loginError").style.display="none";
+  fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(pw)+"&t="+Date.now())
+    .then(r=>r.json())
+    .then(auth=>{
+      if(!auth || !auth.ok){
+        document.getElementById("loginError").style.display="block";
+        return;
+      }
+      const role=auth.role;
+      currentRole=role;
+      loggedInStaffName=(role==="staff")?auth.name:null;
+      currentPassword=pw;
+      document.getElementById("loginBox").style.display="none";
+      document.getElementById("adminPanel").classList.add("visible");
+      document.getElementById("pwInput").value="";
+      document.getElementById("modalTitle").textContent=role==="admin"?"Admin Panel":"Staff Panel";
+      document.getElementById("roleBadge").textContent=role==="admin"?"Admin":loggedInStaffName;
+      document.getElementById("roleBadge").className="role-badge "+(role==="admin"?"role-admin":"role-staff");
+      document.getElementById("manageTabBtn").style.display=role==="admin"?"":"none";
+      document.getElementById("timeoffTabBtn").textContent=role==="admin"?"Time Off":"My Time Off";
+      // Add Staff filter option for admin
+      ["fp-group","fd-group"].forEach(id=>{
+        const sel=document.getElementById(id);
+        Array.from(sel.options).forEach(o=>{if(o.value==="Staff")o.remove();});
+        const opt=document.createElement("option");opt.value="Staff";opt.textContent="Staff";sel.appendChild(opt);
+      });
+      // Default date range: this week
+      const today=todayStr();
+      const wStart=currentWeekStart();
+      ["fp-from","fd-from"].forEach(id=>document.getElementById(id).value=wStart);
+      ["fp-to","fd-to"].forEach(id=>document.getElementById(id).value=today);
+      loadAndRender();
+    })
+    .catch(()=>{
+      document.getElementById("loginError").textContent="Could not reach the server. Check connection.";
+      document.getElementById("loginError").style.display="block";
     });
-    // Default date range: this week
-    const today=todayStr();
-    const wStart=currentWeekStart();
-    ["fp-from","fd-from"].forEach(id=>document.getElementById(id).value=wStart);
-    ["fp-to","fd-to"].forEach(id=>document.getElementById(id).value=today);
-    loadAndRender();
-  } else {
-    document.getElementById("loginError").style.display="block";
-  }
 }
 
 // ── TABS ─────────────────────────────────────────────────────────────────────
@@ -924,7 +1012,14 @@ function loadAndRender(){
 
 function getFiltered(groupSel,from,to){
   let recs=allRecords;
-  // Staff can see all groups
+  // Logged-in staff can see all Undergrad/Master's records, but only their own Staff record
+  if(currentRole==="staff" && loggedInStaffName){
+    recs=recs.filter(r=>{
+      const g=r.Group||r.group||"";
+      const n=r.Name||r.name||"";
+      return g!=="Staff" || n===loggedInStaffName;
+    });
+  }
   if(groupSel) recs=recs.filter(r=>(r.Group||r.group||"")===groupSel);
   if(from) recs=recs.filter(r=>(r.Date||r.date||"")>=from);
   if(to)   recs=recs.filter(r=>(r.Date||r.date||"")<=to);
@@ -1124,6 +1219,16 @@ function renderManage(){
     document.getElementById("chips-"+g).innerHTML=(members[g]||[]).map(name=>`<div class="${chipClass(g)}"><span>${name}</span><button class="chip-del" onclick="removeMember('${g}','${name.replace(/'/g,"\\'")}')">&#x00D7;</button></div>`).join("");
   });
   document.getElementById("radiusInput").value=radius;
+  renderStaffPasswordFields();
+}
+
+function renderStaffPasswordFields(){
+  const c=document.getElementById("staffPwFields");
+  c.innerHTML=(members.staff||[]).map(name=>{
+    const safe=name.replace(/"/g,"&quot;");
+    return `<label style="font-size:13px;color:#555;font-weight:600;margin-top:4px">${name} Password</label>
+    <input class="settings-input" type="password" data-staffname="${safe}" placeholder="Leave blank to keep current" style="width:100%">`;
+  }).join("");
 }
 
 function addMember(g){
@@ -1136,6 +1241,11 @@ function addMember(g){
 function removeMember(g,name){
   members[g]=(members[g]||[]).filter(m=>m!==name);
   delete sessions[name]; ss("att5_members",members); ss("att5_sessions",sessions);
+  if(g==="staff" && currentRole==="admin"){
+    fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
+      timeoffAction:"changePasswords", password:currentPassword||"", removeStaffPw:[name]
+    })}).catch(()=>{});
+  }
   if(selName===name){selName=null;selGroup=null;document.getElementById("selectedCard").classList.remove("visible");}
   renderManage(); renderAllGrids();
 }
@@ -1158,12 +1268,38 @@ function saveRadius(){
 
 function savePws(){
   const a=document.getElementById("inp-adminpw").value.trim();
-  const s=document.getElementById("inp-staffpw").value.trim();
-  if(a){adminPw=a;ss("att5_adminpw",adminPw);}
-  if(s){staffPw=s;ss("att5_staffpw",staffPw);}
-  document.getElementById("inp-adminpw").value=""; document.getElementById("inp-staffpw").value="";
-  const el=document.getElementById("pwSaved"); el.style.display="inline"; setTimeout(()=>el.style.display="none",2000);
-  showToast("Passwords updated","green");
+  const newStaffPw={};
+  document.querySelectorAll("#staffPwFields input[data-staffname]").forEach(inp=>{
+    const val=inp.value.trim();
+    const name=inp.getAttribute("data-staffname");
+    if(val) newStaffPw[name]=val;
+  });
+
+  if(!a && !Object.keys(newStaffPw).length){
+    showToast("Enter at least one new password first","warn");
+    return;
+  }
+
+  showToast("Saving\u2026","");
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
+    timeoffAction:"changePasswords",
+    password:currentPassword||"",
+    newAdminPw:a||undefined,
+    newStaffPw:Object.keys(newStaffPw).length?newStaffPw:undefined
+  })})
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res || res.status!=="success"){
+        showToast("Could not save (check current password / connection)","warn");
+        return;
+      }
+      if(a) currentPassword=a; // keep this session valid if the admin changed their own password
+      document.getElementById("inp-adminpw").value="";
+      document.querySelectorAll("#staffPwFields input[data-staffname]").forEach(inp=>inp.value="");
+      const el=document.getElementById("pwSaved"); el.style.display="inline"; setTimeout(()=>el.style.display="none",2000);
+      showToast("Passwords updated","green");
+    })
+    .catch(()=>showToast("Could not save. Check connection.","warn"));
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
