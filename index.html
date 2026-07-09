@@ -271,6 +271,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
       <select class="tform-select" id="to-type">
         <option value="Vacation">Vacation</option>
         <option value="Sick Leave">Sick Leave</option>
+        <option value="Personal Leave">Personal Leave</option>
       </select>
     </div>
 
@@ -322,6 +323,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
         <button class="timeoff-link-btn" onclick="tosChangeName()">Log out</button>
       </div>
       <button class="timeoff-link-btn" style="margin-bottom:14px" onclick="openTimeOffForm()">+ Request Time Off</button>
+      <div id="tosYearlySummary" style="margin-bottom:16px"></div>
       <div class="my-requests" id="tosRequests" style="display:block;margin-top:0;border-top:none;padding-top:0"></div>
     </div>
   </div>
@@ -449,6 +451,18 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
             <div class="settings-row" style="margin-top:4px">
               <button class="save-btn" onclick="savePws()">Save Passwords</button>
               <span class="saved-label" id="pwSaved">Saved &#x2713;</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-label">Staff Contact Emails</div>
+          <div style="font-size:12px;color:#888;margin-top:2px">Used only to notify staff when their Time Off request is approved or needs discussion.</div>
+          <div style="display:grid;gap:8px;max-width:360px;margin-top:10px">
+            <div id="staffEmailFields"></div>
+            <div class="settings-row" style="margin-top:4px">
+              <button class="save-btn" onclick="savePws()">Save Emails</button>
+              <span class="saved-label" id="emailSaved">Saved &#x2713;</span>
             </div>
           </div>
         </div>
@@ -710,8 +724,10 @@ function submitTimeOff(){
 function loadMyTimeOffRequests(name, targetId){
   targetId = targetId || "tosRequests";
   const div=document.getElementById(targetId);
+  const sumDiv=document.getElementById("tosYearlySummary");
   div.style.display="block";
   div.innerHTML='<div class="loading" style="padding:12px 0">Loading your requests&hellip;</div>';
+  if(sumDiv) sumDiv.innerHTML="";
   fetch(SCRIPT_URL+"?action=timeoff&password="+encodeURIComponent(tosPassword||"")+"&t="+Date.now())
     .then(r=>r.json())
     .then(data=>{
@@ -720,11 +736,52 @@ function loadMyTimeOffRequests(name, targetId){
       allTimeOffRequests=all;
       const mine=all.filter(r=>(r.Name||r.name||"")===name)
         .sort((a,b)=>(b.StartDate||b.startDate||"").localeCompare(a.StartDate||a.startDate||""));
+
+      if(sumDiv) sumDiv.innerHTML=renderYearlySummary(mine);
+
       if(!mine.length){div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">No time off requests yet.</div>';return;}
       div.innerHTML='<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Your Requests</div>'
         + mine.map(r=>renderMyRequestItem(r)).join("");
     })
     .catch(()=>{div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">Could not load requests.</div>';});
+}
+
+function renderYearlySummary(mine){
+  const year=String(new Date().getFullYear());
+  const thisYear=mine.filter(r=>String(r.StartDate||r.startDate||"").slice(0,4)===year);
+
+  if(!thisYear.length){
+    return `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">${year} Summary</div>
+      <div style="font-size:12px;color:#aaa;padding:4px 0 8px">No requests yet this year.</div>`;
+  }
+
+  const byType={};
+  thisYear.forEach(r=>{
+    const type=r.LeaveType||r.leaveType||"Other";
+    const d=parseInt(r.Days||r.days)||0;
+    if(!byType[type])byType[type]={count:0,days:0};
+    byType[type].count+=1;
+    byType[type].days+=d;
+  });
+  const types=Object.keys(byType).sort();
+  const totalCount=thisYear.length;
+  const totalDays=thisYear.reduce((s,r)=>s+(parseInt(r.Days||r.days)||0),0);
+
+  return `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">${year} Summary</div>
+    <table class="timeoff-summary-table" style="margin-bottom:4px">
+      <thead><tr><th>Type</th><th>Requests</th><th>Days</th></tr></thead>
+      <tbody>${types.map(t=>`<tr>
+        <td style="font-weight:600">${t}</td>
+        <td>${byType[t].count}</td>
+        <td>${byType[t].days}</td>
+      </tr>`).join("")}
+      <tr>
+        <td style="font-weight:700;color:#7c3aed">Total</td>
+        <td style="font-weight:700;color:#7c3aed">${totalCount}</td>
+        <td style="font-weight:700;color:#7c3aed">${totalDays}</td>
+      </tr>
+      </tbody>
+    </table>`;
 }
 
 // ── TIME OFF SECTION (top menu — password protected, own requests only) ────
@@ -845,9 +902,11 @@ function renderTimeOffAdmin(){
   approved.forEach(r=>{
     const n=r.Name||r.name||"";
     const d=parseInt(r.Days||r.days)||0;
-    if(!byName[n])byName[n]={vac:0,sick:0,total:0};
+    if(!byName[n])byName[n]={vac:0,sick:0,personal:0,total:0};
     const type=r.LeaveType||r.leaveType||"";
-    if(type==="Sick Leave")byName[n].sick+=d; else byName[n].vac+=d;
+    if(type==="Sick Leave")byName[n].sick+=d;
+    else if(type==="Personal Leave")byName[n].personal+=d;
+    else byName[n].vac+=d;
     byName[n].total+=d;
   });
   const sDiv=document.getElementById("approvedSummaryList");
@@ -856,11 +915,12 @@ function renderTimeOffAdmin(){
     sDiv.innerHTML='<div class="no-rec">No approved time off yet.</div>';
   } else {
     sDiv.innerHTML=`<table class="timeoff-summary-table">
-      <thead><tr><th>Name</th><th>Vacation Days</th><th>Sick Days</th><th>Total Days</th></tr></thead>
+      <thead><tr><th>Name</th><th>Vacation Days</th><th>Sick Days</th><th>Personal Days</th><th>Total Days</th></tr></thead>
       <tbody>${names.map(n=>`<tr>
         <td style="font-weight:600">${n}</td>
         <td>${byName[n].vac}</td>
         <td>${byName[n].sick}</td>
+        <td>${byName[n].personal}</td>
         <td style="font-weight:700;color:#7c3aed">${byName[n].total}</td>
       </tr>`).join("")}</tbody>
     </table>`;
@@ -1220,6 +1280,16 @@ function renderManage(){
   });
   document.getElementById("radiusInput").value=radius;
   renderStaffPasswordFields();
+  renderStaffEmailFields();
+}
+
+function renderStaffEmailFields(){
+  const c=document.getElementById("staffEmailFields");
+  c.innerHTML=(members.staff||[]).map(name=>{
+    const safe=name.replace(/"/g,"&quot;");
+    return `<label style="font-size:13px;color:#555;font-weight:600;margin-top:4px">${name} Email</label>
+    <input class="settings-input" type="email" data-staffemailname="${safe}" placeholder="Leave blank to keep current" style="width:100%">`;
+  }).join("");
 }
 
 function renderStaffPasswordFields(){
@@ -1275,8 +1345,23 @@ function savePws(){
     if(val) newStaffPw[name]=val;
   });
 
-  if(!a && !Object.keys(newStaffPw).length){
-    showToast("Enter at least one new password first","warn");
+  const newStaffEmail={};
+  let badEmail=false;
+  document.querySelectorAll("#staffEmailFields input[data-staffemailname]").forEach(inp=>{
+    const val=inp.value.trim();
+    const name=inp.getAttribute("data-staffemailname");
+    if(val){
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) badEmail=true;
+      else newStaffEmail[name]=val;
+    }
+  });
+  if(badEmail){
+    showToast("One of the emails doesn't look valid","warn");
+    return;
+  }
+
+  if(!a && !Object.keys(newStaffPw).length && !Object.keys(newStaffEmail).length){
+    showToast("Enter at least one change first","warn");
     return;
   }
 
@@ -1285,7 +1370,8 @@ function savePws(){
     timeoffAction:"changePasswords",
     password:currentPassword||"",
     newAdminPw:a||undefined,
-    newStaffPw:Object.keys(newStaffPw).length?newStaffPw:undefined
+    newStaffPw:Object.keys(newStaffPw).length?newStaffPw:undefined,
+    newStaffEmail:Object.keys(newStaffEmail).length?newStaffEmail:undefined
   })})
     .then(r=>r.json())
     .then(res=>{
@@ -1296,8 +1382,10 @@ function savePws(){
       if(a) currentPassword=a; // keep this session valid if the admin changed their own password
       document.getElementById("inp-adminpw").value="";
       document.querySelectorAll("#staffPwFields input[data-staffname]").forEach(inp=>inp.value="");
-      const el=document.getElementById("pwSaved"); el.style.display="inline"; setTimeout(()=>el.style.display="none",2000);
-      showToast("Passwords updated","green");
+      document.querySelectorAll("#staffEmailFields input[data-staffemailname]").forEach(inp=>inp.value="");
+      const pwEl=document.getElementById("pwSaved"); pwEl.style.display="inline"; setTimeout(()=>pwEl.style.display="none",2000);
+      const emEl=document.getElementById("emailSaved"); emEl.style.display="inline"; setTimeout(()=>emEl.style.display="none",2000);
+      showToast("Saved","green");
     })
     .catch(()=>showToast("Could not save. Check connection.","warn"));
 }
