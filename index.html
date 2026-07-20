@@ -1232,6 +1232,25 @@ function deleteTimeOffRequest(rowId,name){
     .catch(()=>showToast("Could not delete. Check connection.","warn"));
 }
 
+function deleteAttendanceRecord(name,date,checkIn,checkOut,timestamp){
+  if(!confirm("Permanently delete this check-in/out record for "+name+" on "+date+"? This cannot be undone.")) return;
+  showToast("Deleting\u2026","");
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
+    attendanceAction:"delete", name:name, date:date, checkIn:checkIn, checkOut:checkOut,
+    timestamp:timestamp, password:currentPassword||""
+  })})
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res || res.status!=="success"){
+        showToast("Could not delete (check connection / re-login)","warn");
+        return;
+      }
+      showToast("Record deleted","green");
+      loadAndRender();
+    })
+    .catch(()=>showToast("Could not delete. Check connection.","warn"));
+}
+
 // ── LOGIN ────────────────────────────────────────────────────────────────────
 function openAdmin(){
   document.getElementById("overlay").classList.add("open");
@@ -1404,10 +1423,10 @@ function renderPersonView(){
       <div class="person-detail">
         <!-- Daily records in range -->
         <table class="rec-table">
-          <thead><tr><th>Date</th><th>Check In</th><th>In Location</th>${currentRole==="admin"?"<th>In Dist.</th>":""}<th>Check Out</th><th>Out Location</th>${currentRole==="admin"?"<th>Out Dist.</th>":""}<th>Duration</th></tr></thead>
+          <thead><tr><th>Date</th><th>Check In</th><th>In Location</th>${currentRole==="admin"?"<th>In Dist.</th>":""}<th>Check Out</th><th>Out Location</th>${currentRole==="admin"?"<th>Out Dist.</th>":""}<th>Duration</th>${currentRole==="admin"?"<th></th>":""}</tr></thead>
           <tbody>
             ${rangeRecs.length===0
-              ? `<tr><td colspan="${currentRole==="admin"?8:6}" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>`
+              ? `<tr><td colspan="${currentRole==="admin"?9:6}" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>`
               : rangeRecs.sort((a,b)=>(b.Date||"").localeCompare(a.Date||"")).map(r=>`
               <tr>
                 <td>${fmtDateLabel(r.Date||r.date||"")}</td>
@@ -1418,6 +1437,7 @@ function renderPersonView(){
                 <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
                 ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
                 <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
+                ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}','${escapeJs(r.Timestamp||"")}')">Delete</button></td>`:""}
               </tr>`).join("")}
           </tbody>
         </table>
