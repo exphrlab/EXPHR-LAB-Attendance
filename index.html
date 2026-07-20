@@ -75,6 +75,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 .tr-btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; }
 .tr-btn-approve { background: #27ae60; color: #fff; }
 .tr-btn-deny { background: #fff; color: #e67e22; border: 1.5px solid #e67e22; }
+.tr-btn-delete { background: #fff; color: #999; border: 1.5px solid #ddd; }
 .tr-comment-input { width: 100%; padding: 8px 10px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 13px; margin-top: 8px; outline: none; }
 .timeoff-summary-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
 .timeoff-summary-table th { font-size: 11px; font-weight: 700; color: #8892b0; text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; text-transform: uppercase; letter-spacing: 0.8px; background: #fafafa; }
@@ -238,6 +239,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
       <button class="btn-ci" id="btnCI" onclick="doCheckIn()">Check In</button>
       <button class="btn-co" id="btnCO" onclick="doCheckOut()">Check Out</button>
     </div>
+    <div id="myAttendanceSummary" style="display:none"></div>
   </div>
 
   <div class="section-label">Select your name</div>
@@ -628,6 +630,12 @@ function selectMember(name,group){
   document.getElementById("btnCI").disabled=isIn||!locationOK;
   document.getElementById("btnCO").disabled=!isIn||!locationOK;
 
+  if(group==="undergrad" || group==="masters"){
+    loadMyAttendanceSummary(name);
+  } else {
+    document.getElementById("myAttendanceSummary").style.display="none";
+  }
+
   renderAllGrids();
   window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -660,6 +668,70 @@ function doCheckOut(){
   fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)})
     .then(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast(selName+" checked out \u2014 "+rec.duration,"green");selectMember(selName,selGroup);})
     .catch(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast("Saved locally (check connection)","warn");selectMember(selName,selGroup);});
+}
+
+// ── MY ATTENDANCE SUMMARY (own hours — shown after tapping your name) ──────
+function loadMyAttendanceSummary(name){
+  const div=document.getElementById("myAttendanceSummary");
+  div.style.display="block";
+  div.innerHTML='<div class="loading" style="padding:10px 0">Loading your hours&hellip;</div>';
+  fetch(SCRIPT_URL+"?t="+Date.now())
+    .then(r=>r.json())
+    .then(data=>{
+      const all=Array.isArray(data)?data:[];
+      const mine=all.filter(r=>(r.Name||r.name||"")===name)
+        .sort((a,b)=>(b.Date||b.date||"").localeCompare(a.Date||a.date||""));
+      div.innerHTML=renderMyAttendanceSummary(mine);
+    })
+    .catch(()=>{div.innerHTML='<div style="font-size:12px;color:#aaa;padding:8px 0">Could not load your hours.</div>';});
+}
+
+function renderMyAttendanceSummary(mine){
+  if(!mine.length){
+    return '<div style="font-size:12px;color:#aaa;padding:8px 0">No check-in history yet.</div>';
+  }
+
+  const wkStart=currentWeekStart();
+  const month=currentMonth();
+  const year=String(new Date().getFullYear());
+
+  let wkMin=0, moMin=0, yrMin=0;
+  mine.forEach(r=>{
+    const date=r.Date||r.date||"";
+    const mins=parseInt(r.DurationMinutes||r.durationMinutes)||0;
+    if(date>=wkStart) wkMin+=mins;
+    if(date.slice(0,7)===month) moMin+=mins;
+    if(date.slice(0,4)===year) yrMin+=mins;
+  });
+  const fmtMin=m=>{const h=Math.floor(m/60),mm=m%60;return h>0?h+"h "+mm+"m":mm+"m";};
+
+  const recent=mine.slice(0,7);
+
+  return `
+    <div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin:14px 0 8px">Your Hours</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+      <div style="background:#f7f7fb;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:0.5px">This Week</div>
+        <div style="font-size:16px;font-weight:700;color:#4a90e2;margin-top:2px">${fmtMin(wkMin)}</div>
+      </div>
+      <div style="background:#f7f7fb;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:0.5px">This Month</div>
+        <div style="font-size:16px;font-weight:700;color:#4a90e2;margin-top:2px">${fmtMin(moMin)}</div>
+      </div>
+      <div style="background:#f7f7fb;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:0.5px">This Year</div>
+        <div style="font-size:16px;font-weight:700;color:#4a90e2;margin-top:2px">${fmtMin(yrMin)}</div>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">Recent Check-Ins</div>
+    <div>${recent.map(r=>`
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:13px">
+        <span style="color:#555">${fmtDateLabel(r.Date||r.date||"")}</span>
+        <span style="color:#27ae60">${r.CheckIn||r.checkIn||"–"}</span>
+        <span style="color:#e74c3c">${r.CheckOut||r.checkOut||"–"}</span>
+        <span style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||"–"}</span>
+      </div>`).join("")}
+    </div>`;
 }
 
 // ── TOAST ────────────────────────────────────────────────────────────────────
@@ -1118,6 +1190,10 @@ function renderAdminRequestCard(r,showActions){
       <button class="tr-btn tr-btn-approve" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Approved')">Approve</button>
       <button class="tr-btn tr-btn-deny" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Denied')">Deny</button>
     </div>` : ""}
+    ${currentRole==="admin" ? `
+    <div class="tr-actions" style="margin-top:${showActions?"6px":"10px"}">
+      <button class="tr-btn tr-btn-delete" onclick="deleteTimeOffRequest('${rowId}','${escapeJs(name)}')">Delete</button>
+    </div>` : ""}
   </div>`;
 }
 
@@ -1136,6 +1212,24 @@ function updateTimeOffStatus(rowId,name,start,newStatus){
       loadTimeOffRequests();
     })
     .catch(()=>showToast("Could not update. Check connection.","warn"));
+}
+
+function deleteTimeOffRequest(rowId,name){
+  if(!confirm("Permanently delete "+name+"'s time off request? This cannot be undone.")) return;
+  showToast("Deleting\u2026","");
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
+    timeoffAction:"delete", requestId:rowId, password:currentPassword||""
+  })})
+    .then(r=>r.json())
+    .then(res=>{
+      if(!res || res.status!=="success"){
+        showToast("Could not delete (check connection / re-login)","warn");
+        return;
+      }
+      showToast("Request deleted","green");
+      loadTimeOffRequests();
+    })
+    .catch(()=>showToast("Could not delete. Check connection.","warn"));
 }
 
 // ── LOGIN ────────────────────────────────────────────────────────────────────
