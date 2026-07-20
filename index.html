@@ -52,7 +52,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
 .status-pending { background: #fff3cd; color: #92722a; }
 .status-approved { background: #d1f5e0; color: #1a7a4a; }
-.status-discuss { background: #ffe2e2; color: #c0392b; }
+.status-denied { background: #ffe2e2; color: #c0392b; }
 
 /* My requests list (inside selected card / personal view) */
 .my-requests { margin-top: 16px; border-top: 1px solid #eee; padding-top: 14px; }
@@ -74,7 +74,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 .tr-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .tr-btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; }
 .tr-btn-approve { background: #27ae60; color: #fff; }
-.tr-btn-discuss { background: #fff; color: #e67e22; border: 1.5px solid #e67e22; }
+.tr-btn-deny { background: #fff; color: #e67e22; border: 1.5px solid #e67e22; }
 .tr-comment-input { width: 100%; padding: 8px 10px; border: 1.5px solid #e0e0e8; border-radius: 8px; font-size: 13px; margin-top: 8px; outline: none; }
 .timeoff-summary-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
 .timeoff-summary-table th { font-size: 11px; font-weight: 700; color: #8892b0; text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; text-transform: uppercase; letter-spacing: 0.8px; background: #fafafa; }
@@ -402,6 +402,13 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
           <div class="section-label">Approved Time Off — Summary</div>
           <div id="approvedSummaryList"></div>
         </div>
+        <div id="monthlyUsageSection" style="margin-bottom:20px;display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div class="section-label" style="margin-bottom:0">Monthly Usage (Approved) — by Person</div>
+            <select class="settings-input" id="mu-year" style="width:auto;padding:6px 10px" onchange="renderMonthlyUsage()"></select>
+          </div>
+          <div id="monthlyUsageTable" style="margin-top:10px"></div>
+        </div>
         <div>
           <div class="section-label">All Requests</div>
           <div id="allRequestsList"></div>
@@ -553,6 +560,7 @@ function currentMonth(){return todayStr().slice(0,7);}
 
 // ── LOCATION ────────────────────────────────────────────────────────────────
 let currentLocationName = null; // which office location user is at
+let currentDistance = null; // meters from nearest office (admin-only audit info)
 
 function findNearestOffice(lat,lng){
   let nearest=null, minDist=Infinity;
@@ -571,10 +579,11 @@ function startLocation(){
     const {location,distance}=findNearestOffice(curLat,curLng);
     locationOK=distance<=radius;
     currentLocationName=locationOK?location.name:null;
+    currentDistance=distance;
     banner.className="loc-banner "+(locationOK?"ok":"fail");
     msg.textContent=locationOK
-      ? "You're at "+location.name+" ("+distance+"m away) \u2713"
-      : "Check-in is only available at lab locations. Nearest: "+location.name+", "+distance+"m away (limit: "+radius+"m).";
+      ? "You're at "+location.name+" \u2713"
+      : "Check-in is only available at lab locations.";
     renderAllGrids();
     if(selName)selectMember(selName,selGroup);
   },()=>{
@@ -627,7 +636,7 @@ function selectMember(name,group){
 function doCheckIn(){
   if(!selName||!locationOK)return;
   if(sessions[selName]){showToast("Already checked in.","warn");return;}
-  sessions[selName]={inTs:Date.now(),group:selGroup,inLocation:currentLocationName};
+  sessions[selName]={inTs:Date.now(),group:selGroup,inLocation:currentLocationName,inDistance:currentDistance};
   ss("att5_sessions",sessions);
   showToast(selName+" checked in at "+currentLocationName+" \u2713","green");
   selectMember(selName,selGroup);
@@ -643,7 +652,9 @@ function doCheckOut(){
     checkIn:fmtTime(sess.inTs),checkOut:fmtTime(outTs),
     duration:fmtDurMs(dur),durationMinutes:Math.round(dur/60000),
     checkInLocation:sess.inLocation||"",
-    checkOutLocation:currentLocationName||""
+    checkOutLocation:currentLocationName||"",
+    checkInDistance: (sess.inDistance!=null?sess.inDistance:""),
+    checkOutDistance: (currentDistance!=null?currentDistance:"")
   };
   showToast("Saving\u2026","");
   fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)})
@@ -809,24 +820,24 @@ function renderYearlySummary(mine){
   const year=String(new Date().getFullYear());
   const thisYear=mine.filter(r=>String(r.StartDate||r.startDate||"").slice(0,4)===year);
 
+  let html;
   if(!thisYear.length){
-    return `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">${year} Summary</div>
+    html = `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">${year} Summary</div>
       <div style="font-size:12px;color:#aaa;padding:4px 0 8px">No requests yet this year.</div>`;
-  }
+  } else {
+    const byType={};
+    thisYear.forEach(r=>{
+      const type=r.LeaveType||r.leaveType||"Other";
+      const d=parseInt(r.Days||r.days)||0;
+      if(!byType[type])byType[type]={count:0,days:0};
+      byType[type].count+=1;
+      byType[type].days+=d;
+    });
+    const types=Object.keys(byType).sort();
+    const totalCount=thisYear.length;
+    const totalDays=thisYear.reduce((s,r)=>s+(parseInt(r.Days||r.days)||0),0);
 
-  const byType={};
-  thisYear.forEach(r=>{
-    const type=r.LeaveType||r.leaveType||"Other";
-    const d=parseInt(r.Days||r.days)||0;
-    if(!byType[type])byType[type]={count:0,days:0};
-    byType[type].count+=1;
-    byType[type].days+=d;
-  });
-  const types=Object.keys(byType).sort();
-  const totalCount=thisYear.length;
-  const totalDays=thisYear.reduce((s,r)=>s+(parseInt(r.Days||r.days)||0),0);
-
-  return `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">${year} Summary</div>
+    html = `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">${year} Summary <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:#bbb">(all statuses)</span></div>
     <table class="timeoff-summary-table" style="margin-bottom:4px">
       <thead><tr><th>Type</th><th>Requests</th><th>Days</th></tr></thead>
       <tbody>${types.map(t=>`<tr>
@@ -841,6 +852,27 @@ function renderYearlySummary(mine){
       </tr>
       </tbody>
     </table>`;
+  }
+
+  html += renderPersonalMonthlyUsage(mine, year);
+  return html;
+}
+
+function renderPersonalMonthlyUsage(mine, year){
+  const approved=mine.filter(r=>(r.Status||r.status||"")==="Approved" && String(r.StartDate||r.startDate||"").slice(0,4)===year);
+  const monthLabels=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const counts=new Array(12).fill(0);
+  approved.forEach(r=>{
+    const m=parseInt(String(r.StartDate||r.startDate||"").slice(5,7),10);
+    if(m>=1 && m<=12) counts[m-1]++;
+  });
+  const total=counts.reduce((a,b)=>a+b,0);
+
+  return `<div style="font-size:11px;font-weight:700;color:#8892b0;text-transform:uppercase;letter-spacing:0.8px;margin:14px 0 8px">${year} Monthly Usage <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:#bbb">(approved only)</span></div>
+    <div style="overflow-x:auto"><table class="timeoff-summary-table" style="min-width:560px">
+      <thead><tr>${monthLabels.map(m=>`<th style="text-align:center">${m}</th>`).join("")}<th style="text-align:center">Total</th></tr></thead>
+      <tbody><tr>${counts.map(c=>`<td style="text-align:center;${c>0?'font-weight:700;color:#7c3aed':'color:#ccc'}">${c>0?c:'–'}</td>`).join("")}<td style="text-align:center;font-weight:700;color:#7c3aed">${total}</td></tr></tbody>
+    </table></div>`;
 }
 
 // ── TIME OFF SECTION (top menu — password protected, own requests only) ────
@@ -900,7 +932,7 @@ function statusBadgeHtml(status){
   const s=status||"Pending";
   let cls="status-pending", label=s;
   if(s==="Approved"){cls="status-approved";}
-  else if(s==="Needs Discussion"){cls="status-discuss";}
+  else if(s==="Denied" || s==="Needs Discussion"){cls="status-denied"; label="Denied";}
   else {cls="status-pending"; label="Pending";}
   return '<span class="status-badge '+cls+'">'+label+'</span>';
 }
@@ -991,6 +1023,69 @@ function renderTimeOffAdmin(){
   aDiv.innerHTML = allSorted.length===0
     ? '<div class="no-rec">No requests yet.</div>'
     : allSorted.map(r=>renderAdminRequestCard(r,false)).join("");
+
+  // Monthly usage — admin only
+  const muSection=document.getElementById("monthlyUsageSection");
+  if(currentRole==="admin"){
+    muSection.style.display="";
+    populateMonthlyUsageYears();
+    renderMonthlyUsage();
+  } else {
+    muSection.style.display="none";
+  }
+}
+
+function populateMonthlyUsageYears(){
+  const sel=document.getElementById("mu-year");
+  const approved=allTimeOffRequests.filter(r=>(r.Status||r.status||"")==="Approved");
+  const years=new Set(approved.map(r=>String(r.StartDate||r.startDate||"").slice(0,4)).filter(Boolean));
+  years.add(String(new Date().getFullYear()));
+  const sorted=Array.from(years).sort((a,b)=>b.localeCompare(a));
+  const prevVal=sel.value;
+  sel.innerHTML=sorted.map(y=>`<option value="${y}">${y}</option>`).join("");
+  sel.value = sorted.includes(prevVal) ? prevVal : String(new Date().getFullYear());
+}
+
+function renderMonthlyUsage(){
+  const year=document.getElementById("mu-year").value || String(new Date().getFullYear());
+  const approved=allTimeOffRequests.filter(r=>
+    (r.Status||r.status||"")==="Approved" &&
+    String(r.StartDate||r.startDate||"").slice(0,4)===year
+  );
+
+  // Count requests per staff member per month (based on StartDate's month)
+  const counts={}; // name -> [12 ints]
+  (members.staff||[]).forEach(n=>{ counts[n]=new Array(12).fill(0); });
+  approved.forEach(r=>{
+    const name=r.Name||r.name||"";
+    const m=parseInt(String(r.StartDate||r.startDate||"").slice(5,7),10);
+    if(!m || m<1 || m>12) return;
+    if(!counts[name]) counts[name]=new Array(12).fill(0); // in case a non-current staff member has old records
+    counts[name][m-1]++;
+  });
+
+  const monthLabels=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const names=Object.keys(counts).sort();
+  const div=document.getElementById("monthlyUsageTable");
+
+  if(!names.length){
+    div.innerHTML='<div class="no-rec">No staff members yet.</div>';
+    return;
+  }
+
+  div.innerHTML=`<div style="overflow-x:auto"><table class="timeoff-summary-table" style="min-width:640px">
+    <thead><tr><th>Name</th>${monthLabels.map(m=>`<th style="text-align:center">${m}</th>`).join("")}<th style="text-align:center">Year Total</th></tr></thead>
+    <tbody>${names.map(n=>{
+      const row=counts[n];
+      const total=row.reduce((a,b)=>a+b,0);
+      return `<tr>
+        <td style="font-weight:600">${n}</td>
+        ${row.map(c=>`<td style="text-align:center;${c>0?'font-weight:700;color:#7c3aed':'color:#ccc'}">${c>0?c:'–'}</td>`).join("")}
+        <td style="text-align:center;font-weight:700;color:#7c3aed">${total}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>
+  <div style="font-size:11px;color:#aaa;margin-top:6px">Counts approved requests only, grouped by the month their start date falls in.</div>`;
 }
 
 function renderAdminRequestCard(r,showActions){
@@ -1021,7 +1116,7 @@ function renderAdminRequestCard(r,showActions){
     <input class="tr-comment-input" placeholder="Optional note to staff..." id="comment-${rowId}">
     <div class="tr-actions">
       <button class="tr-btn tr-btn-approve" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Approved')">Approve</button>
-      <button class="tr-btn tr-btn-discuss" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Needs Discussion')">Needs Discussion</button>
+      <button class="tr-btn tr-btn-deny" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Denied')">Deny</button>
     </div>` : ""}
   </div>`;
 }
@@ -1215,17 +1310,19 @@ function renderPersonView(){
       <div class="person-detail">
         <!-- Daily records in range -->
         <table class="rec-table">
-          <thead><tr><th>Date</th><th>Check In</th><th>In Location</th><th>Check Out</th><th>Out Location</th><th>Duration</th></tr></thead>
+          <thead><tr><th>Date</th><th>Check In</th><th>In Location</th>${currentRole==="admin"?"<th>In Dist.</th>":""}<th>Check Out</th><th>Out Location</th>${currentRole==="admin"?"<th>Out Dist.</th>":""}<th>Duration</th></tr></thead>
           <tbody>
             ${rangeRecs.length===0
-              ? '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>'
+              ? `<tr><td colspan="${currentRole==="admin"?8:6}" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>`
               : rangeRecs.sort((a,b)=>(b.Date||"").localeCompare(a.Date||"")).map(r=>`
               <tr>
                 <td>${fmtDateLabel(r.Date||r.date||"")}</td>
                 <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
                 <td style="color:#888;font-size:12px">${r.CheckInLocation||r.checkInLocation||"–"}</td>
+                ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckInDistance||r.checkInDistance?((r.CheckInDistance||r.checkInDistance)+"m"):"–"}</td>`:""}
                 <td style="color:#e74c3c;font-weight:600">${r.CheckOut||r.checkOut||""}</td>
                 <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
+                ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
                 <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
               </tr>`).join("")}
           </tbody>
@@ -1298,15 +1395,17 @@ function renderDateView(){
       </div>
       <div class="date-records">
         <table class="rec-table">
-          <thead><tr><th>Name</th><th>Group</th><th>Check In</th><th>In Location</th><th>Check Out</th><th>Out Location</th><th>Duration</th></tr></thead>
+          <thead><tr><th>Name</th><th>Group</th><th>Check In</th><th>In Location</th>${currentRole==="admin"?"<th>In Dist.</th>":""}<th>Check Out</th><th>Out Location</th>${currentRole==="admin"?"<th>Out Dist.</th>":""}<th>Duration</th></tr></thead>
           <tbody>${dr.sort((a,b)=>(a.CheckIn||"").localeCompare(b.CheckIn||"")).map(r=>`
             <tr>
               <td style="font-weight:600">${r.Name||r.name||""}</td>
               <td style="color:#888;font-size:12px">${r.Group||r.group||""}</td>
               <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
               <td style="color:#888;font-size:12px">${r.CheckInLocation||r.checkInLocation||"–"}</td>
+              ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckInDistance||r.checkInDistance?((r.CheckInDistance||r.checkInDistance)+"m"):"–"}</td>`:""}
               <td style="color:#e74c3c;font-weight:600">${r.CheckOut||r.checkOut||""}</td>
               <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
+              ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
               <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
             </tr>`).join("")}
           </tbody>
@@ -1324,9 +1423,14 @@ function exportCSV(view){
     document.getElementById(isP?"fp-from":"fd-from").value,
     document.getElementById(isP?"fp-to":"fd-to").value
   );
-  const rows=[["Name","Group","Date","Check In (ET)","In Location","Check Out (ET)","Out Location","Duration","Minutes"]];
+  const isAdmin=currentRole==="admin";
+  const rows=[isAdmin
+    ? ["Name","Group","Date","Check In (ET)","In Location","In Distance (m)","Check Out (ET)","Out Location","Out Distance (m)","Duration","Minutes"]
+    : ["Name","Group","Date","Check In (ET)","In Location","Check Out (ET)","Out Location","Duration","Minutes"]];
   recs.sort((a,b)=>(a.Name||"").localeCompare(b.Name||"")||(b.Date||"").localeCompare(a.Date||""))
-    .forEach(r=>rows.push([r.Name||r.name,r.Group||r.group,r.Date||r.date,r.CheckIn||r.checkIn,r.CheckInLocation||r.checkInLocation||"",r.CheckOut||r.checkOut,r.CheckOutLocation||r.checkOutLocation||"",r.Duration||r.duration,r.DurationMinutes||r.durationMinutes]));
+    .forEach(r=>rows.push(isAdmin
+      ? [r.Name||r.name,r.Group||r.group,r.Date||r.date,r.CheckIn||r.checkIn,r.CheckInLocation||r.checkInLocation||"",r.CheckInDistance||r.checkInDistance||"",r.CheckOut||r.checkOut,r.CheckOutLocation||r.checkOutLocation||"",r.CheckOutDistance||r.checkOutDistance||"",r.Duration||r.duration,r.DurationMinutes||r.durationMinutes]
+      : [r.Name||r.name,r.Group||r.group,r.Date||r.date,r.CheckIn||r.checkIn,r.CheckInLocation||r.checkInLocation||"",r.CheckOut||r.checkOut,r.CheckOutLocation||r.checkOutLocation||"",r.Duration||r.duration,r.DurationMinutes||r.durationMinutes]));
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+rows.map(r=>r.join(",")).join("\n")],{type:"text/csv;charset=utf-8;"}));
   a.download="attendance_"+todayStr()+".csv"; a.click();
@@ -1388,8 +1492,9 @@ function saveRadius(){
     const {location,distance}=findNearestOffice(curLat,curLng);
     locationOK=distance<=radius;
     currentLocationName=locationOK?location.name:null;
+    currentDistance=distance;
     document.getElementById("locBanner").className="loc-banner "+(locationOK?"ok":"fail");
-    document.getElementById("locMsg").textContent=locationOK?"You're at "+location.name+" ("+distance+"m away) \u2713":"Check-in only available at lab locations. Nearest: "+location.name+", "+distance+"m away (limit: "+radius+"m).";
+    document.getElementById("locMsg").textContent=locationOK?"You're at "+location.name+" \u2713":"Check-in only available at lab locations.";
     if(selName)selectMember(selName,selGroup);
   }
 }
