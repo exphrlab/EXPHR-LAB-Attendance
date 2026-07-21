@@ -987,12 +987,19 @@ let tosPassword=null, tosLoggedInName=null;
 function openTimeOffSection(){
   tosPrevSelName=selName; tosPrevSelGroup=selGroup; tosActive=true;
   document.getElementById("timeoffSectionOverlay").classList.add("open");
-  if(tosPassword && tosLoggedInName){
-    showTosDetail(tosLoggedInName);
-  } else {
-    tosChangeName();
-    setTimeout(()=>{const el=document.getElementById("tosPwInput"); if(el)el.focus();},80);
-  }
+  const proceed=()=>{
+    if(tosPassword && tosLoggedInName){
+      showTosDetail(tosLoggedInName);
+    } else {
+      tosChangeName();
+      setTimeout(()=>{const el=document.getElementById("tosPwInput"); if(el)el.focus();},80);
+    }
+  };
+  // Wait for the (async) session-restore check first, same reason as
+  // openAdmin() — otherwise clicking this right after page load can show
+  // the login screen even though a valid saved session exists.
+  if(tosSessionRestorePromise) tosSessionRestorePromise.then(proceed);
+  else proceed();
 }
 function closeTimeOffSection(){
   document.getElementById("timeoffSectionOverlay").classList.remove("open");
@@ -1028,9 +1035,9 @@ function restoreTosSession(){
   const sess=ls("att5_tos_session",null);
   if(!sess || !sess.pw || !sess.expiresAt || Date.now()>sess.expiresAt){
     if(sess) ss("att5_tos_session",null);
-    return;
+    return Promise.resolve();
   }
-  fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(sess.pw)+"&t="+Date.now())
+  return fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(sess.pw)+"&t="+Date.now())
     .then(r=>r.json())
     .then(auth=>{
       if(!auth || !auth.ok || auth.role!=="staff"){ ss("att5_tos_session",null); return; }
@@ -1290,12 +1297,12 @@ function deleteTimeOffRequest(rowId,name){
     .catch(()=>showToast("Could not delete. Check connection.","warn"));
 }
 
-function deleteAttendanceRecord(name,date,checkIn,checkOut,timestamp){
+function deleteAttendanceRecord(recordId,name,date,checkIn,checkOut){
   if(!confirm("Permanently delete this check-in/out record for "+name+" on "+date+"? This cannot be undone.")) return;
   showToast("Deleting\u2026","");
   fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({
-    attendanceAction:"delete", name:name, date:date, checkIn:checkIn, checkOut:checkOut,
-    timestamp:timestamp, password:currentPassword||""
+    attendanceAction:"delete", recordId:recordId, name:name, date:date, checkIn:checkIn, checkOut:checkOut,
+    password:currentPassword||""
   })})
     .then(r=>r.json())
     .then(res=>{
@@ -1312,19 +1319,26 @@ function deleteAttendanceRecord(name,date,checkIn,checkOut,timestamp){
 // ── LOGIN ────────────────────────────────────────────────────────────────────
 function openAdmin(){
   document.getElementById("overlay").classList.add("open");
-  if(currentRole){
-    document.getElementById("loginBox").style.display="none";
-    document.getElementById("adminPanel").classList.add("visible");
-    document.getElementById("modalTitle").textContent=currentRole==="admin"?"Admin Panel":"Staff Panel";
-    loadAndRender();
-  } else {
-    document.getElementById("loginBox").style.display="";
-    document.getElementById("adminPanel").classList.remove("visible");
-    document.getElementById("modalTitle").textContent="Login";
-    const err=document.getElementById("loginError");
-    err.textContent="Incorrect password"; err.style.display="none";
-    setTimeout(()=>document.getElementById("pwInput").focus(),80);
-  }
+  const proceed=()=>{
+    if(currentRole){
+      document.getElementById("loginBox").style.display="none";
+      document.getElementById("adminPanel").classList.add("visible");
+      document.getElementById("modalTitle").textContent=currentRole==="admin"?"Admin Panel":"Staff Panel";
+      loadAndRender();
+    } else {
+      document.getElementById("loginBox").style.display="";
+      document.getElementById("adminPanel").classList.remove("visible");
+      document.getElementById("modalTitle").textContent="Login";
+      const err=document.getElementById("loginError");
+      err.textContent="Incorrect password"; err.style.display="none";
+      setTimeout(()=>document.getElementById("pwInput").focus(),80);
+    }
+  };
+  // Wait for the (async) session-restore check to finish first, so clicking
+  // this right after the page loads doesn't show the login screen by mistake
+  // while a valid saved session is still being verified.
+  if(sessionRestorePromise) sessionRestorePromise.then(proceed);
+  else proceed();
 }
 function closeAdmin(){document.getElementById("overlay").classList.remove("open");}
 function overlayClick(e){if(e.target.id==="overlay")closeAdmin();}
@@ -1361,11 +1375,11 @@ function restoreSession(){
   const sess=ls("att5_session",null);
   if(!sess || !sess.pw || !sess.expiresAt || Date.now()>sess.expiresAt){
     if(sess) ss("att5_session",null);
-    return;
+    return Promise.resolve();
   }
   // Re-check with the server in case the password was changed since — an
   // old/invalid saved session should not silently keep someone logged in.
-  fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(sess.pw)+"&t="+Date.now())
+  return fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(sess.pw)+"&t="+Date.now())
     .then(r=>r.json())
     .then(auth=>{
       if(!auth || !auth.ok){ ss("att5_session",null); return; }
@@ -1539,7 +1553,7 @@ function renderPersonView(){
                 <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
                 ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
                 <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
-                ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}','${escapeJs(r.Timestamp||"")}')">Delete</button></td>`:""}
+                ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.RecordId||r.recordId||"")}','${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}')">Delete</button></td>`:""}
               </tr>`).join("")}
           </tbody>
         </table>
@@ -1623,7 +1637,7 @@ function renderDateView(){
               <td style="color:#888;font-size:12px">${r.CheckOutLocation||r.checkOutLocation||"–"}</td>
               ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
               <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
-              ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}','${escapeJs(r.Timestamp||"")}')">Delete</button></td>`:""}
+              ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.RecordId||r.recordId||"")}','${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}')">Delete</button></td>`:""}
             </tr>`).join("")}
           </tbody>
         </table>
@@ -1774,8 +1788,8 @@ function savePws(){
 // ── INIT ──────────────────────────────────────────────────────────────────────
 renderAllGrids();
 startLocation();
-restoreSession();
-restoreTosSession();
+let sessionRestorePromise=restoreSession();
+let tosSessionRestorePromise=restoreTosSession();
 </script>
 </body>
 </html>
