@@ -351,7 +351,10 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 
     <!-- PANEL -->
     <div class="admin-panel" id="adminPanel">
-      <span class="role-badge" id="roleBadge"></span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span class="role-badge" id="roleBadge"></span>
+        <button class="timeoff-link-btn" style="padding:5px 12px;font-size:12px" onclick="logoutRole()">Log out</button>
+      </div>
 
       <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('person',this)">By Person</button>
@@ -979,19 +982,24 @@ function renderPersonalMonthlyUsage(mine, year){
 
 // ── TIME OFF SECTION (top menu — password protected, own requests only) ────
 let tosPrevSelName=null, tosPrevSelGroup=null, tosActive=false;
-let tosPassword=null;
+let tosPassword=null, tosLoggedInName=null;
 
 function openTimeOffSection(){
   tosPrevSelName=selName; tosPrevSelGroup=selGroup; tosActive=true;
-  tosPassword=null;
-  tosChangeName();
   document.getElementById("timeoffSectionOverlay").classList.add("open");
-  setTimeout(()=>{const el=document.getElementById("tosPwInput"); if(el)el.focus();},80);
+  if(tosPassword && tosLoggedInName){
+    showTosDetail(tosLoggedInName);
+  } else {
+    tosChangeName();
+    setTimeout(()=>{const el=document.getElementById("tosPwInput"); if(el)el.focus();},80);
+  }
 }
 function closeTimeOffSection(){
   document.getElementById("timeoffSectionOverlay").classList.remove("open");
   if(tosActive){ selName=tosPrevSelName; selGroup=tosPrevSelGroup; tosActive=false; }
-  tosPassword=null;
+  // Note: tosPassword/tosLoggedInName are intentionally NOT cleared here —
+  // closing the section just hides it, it doesn't log you out. Use the
+  // "Log out" button (tosChangeName) to actually end the session.
 }
 function tryTosLogin(){
   const pw=document.getElementById("tosPwInput").value;
@@ -1006,6 +1014,8 @@ function tryTosLogin(){
         return;
       }
       tosPassword=pw;
+      tosLoggedInName=auth.name;
+      ss("att5_tos_session",{name:auth.name,pw:pw,expiresAt:Date.now()+12*60*60*1000});
       document.getElementById("tosPwInput").value="";
       showTosDetail(auth.name);
     })
@@ -1014,8 +1024,26 @@ function tryTosLogin(){
       document.getElementById("tosLoginError").style.display="block";
     });
 }
+function restoreTosSession(){
+  const sess=ls("att5_tos_session",null);
+  if(!sess || !sess.pw || !sess.expiresAt || Date.now()>sess.expiresAt){
+    if(sess) ss("att5_tos_session",null);
+    return;
+  }
+  fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(sess.pw)+"&t="+Date.now())
+    .then(r=>r.json())
+    .then(auth=>{
+      if(!auth || !auth.ok || auth.role!=="staff"){ ss("att5_tos_session",null); return; }
+      tosPassword=sess.pw;
+      tosLoggedInName=auth.name;
+      ss("att5_tos_session",{name:auth.name,pw:sess.pw,expiresAt:Date.now()+12*60*60*1000});
+    })
+    .catch(()=>{}); // network hiccup — leave as-is, try again next load
+}
 function tosChangeName(){
-  tosPassword=null;
+  // Acts as "Log out" too — fully clears the saved session.
+  tosPassword=null; tosLoggedInName=null;
+  ss("att5_tos_session",null);
   document.getElementById("tosPicker").style.display="";
   document.getElementById("tosDetail").style.display="none";
   const pwInput=document.getElementById("tosPwInput");
@@ -1284,7 +1312,12 @@ function deleteAttendanceRecord(name,date,checkIn,checkOut,timestamp){
 // ── LOGIN ────────────────────────────────────────────────────────────────────
 function openAdmin(){
   document.getElementById("overlay").classList.add("open");
-  if(!currentRole){
+  if(currentRole){
+    document.getElementById("loginBox").style.display="none";
+    document.getElementById("adminPanel").classList.add("visible");
+    document.getElementById("modalTitle").textContent=currentRole==="admin"?"Admin Panel":"Staff Panel";
+    loadAndRender();
+  } else {
     document.getElementById("loginBox").style.display="";
     document.getElementById("adminPanel").classList.remove("visible");
     document.getElementById("modalTitle").textContent="Login";
@@ -1295,6 +1328,63 @@ function openAdmin(){
 }
 function closeAdmin(){document.getElementById("overlay").classList.remove("open");}
 function overlayClick(e){if(e.target.id==="overlay")closeAdmin();}
+
+function finishLoginState(role,name,pw,persist){
+  currentRole=role;
+  loggedInStaffName=(role==="staff")?name:null;
+  currentPassword=pw;
+  document.getElementById("roleBadge").textContent=role==="admin"?"Admin":loggedInStaffName;
+  document.getElementById("roleBadge").className="role-badge "+(role==="admin"?"role-admin":"role-staff");
+  document.getElementById("manageTabBtn").style.display=role==="admin"?"":"none";
+  document.getElementById("timeoffTabBtn").textContent=role==="admin"?"Time Off":"My Time Off";
+  // Add Staff filter option for admin
+  ["fp-group","fd-group"].forEach(id=>{
+    const sel=document.getElementById(id);
+    Array.from(sel.options).forEach(o=>{if(o.value==="Staff")o.remove();});
+    const opt=document.createElement("option");opt.value="Staff";opt.textContent="Staff";sel.appendChild(opt);
+  });
+  // Default date range: this week
+  const today=todayStr();
+  const wStart=currentWeekStart();
+  ["fp-from","fd-from"].forEach(id=>document.getElementById(id).value=wStart);
+  ["fp-to","fd-to"].forEach(id=>document.getElementById(id).value=today);
+
+  if(persist){
+    // Stay logged in for 12 hours of use (sliding — refreshed on each restore),
+    // so refreshing the page (e.g. after the GPS permission prompt) doesn't
+    // force a re-login. "Log out" always clears this immediately.
+    ss("att5_session",{role:role,name:name,pw:pw,expiresAt:Date.now()+12*60*60*1000});
+  }
+}
+
+function restoreSession(){
+  const sess=ls("att5_session",null);
+  if(!sess || !sess.pw || !sess.expiresAt || Date.now()>sess.expiresAt){
+    if(sess) ss("att5_session",null);
+    return;
+  }
+  // Re-check with the server in case the password was changed since — an
+  // old/invalid saved session should not silently keep someone logged in.
+  fetch(SCRIPT_URL+"?action=auth&password="+encodeURIComponent(sess.pw)+"&t="+Date.now())
+    .then(r=>r.json())
+    .then(auth=>{
+      if(!auth || !auth.ok){ ss("att5_session",null); return; }
+      finishLoginState(auth.role,auth.name,sess.pw,true);
+    })
+    .catch(()=>{}); // network hiccup — leave session as-is, try again next load
+}
+
+function logoutRole(){
+  currentRole=null; currentPassword=null; loggedInStaffName=null;
+  ss("att5_session",null);
+  document.getElementById("adminPanel").classList.remove("visible");
+  document.getElementById("loginBox").style.display="";
+  document.getElementById("modalTitle").textContent="Login";
+  document.getElementById("pwInput").value="";
+  const err=document.getElementById("loginError");
+  err.textContent="Incorrect password"; err.style.display="none";
+  showToast("Logged out","");
+}
 
 function tryLogin(){
   const pw=document.getElementById("pwInput").value;
@@ -1307,29 +1397,11 @@ function tryLogin(){
         document.getElementById("loginError").style.display="block";
         return;
       }
-      const role=auth.role;
-      currentRole=role;
-      loggedInStaffName=(role==="staff")?auth.name:null;
-      currentPassword=pw;
+      finishLoginState(auth.role,auth.name,pw,true);
       document.getElementById("loginBox").style.display="none";
       document.getElementById("adminPanel").classList.add("visible");
       document.getElementById("pwInput").value="";
-      document.getElementById("modalTitle").textContent=role==="admin"?"Admin Panel":"Staff Panel";
-      document.getElementById("roleBadge").textContent=role==="admin"?"Admin":loggedInStaffName;
-      document.getElementById("roleBadge").className="role-badge "+(role==="admin"?"role-admin":"role-staff");
-      document.getElementById("manageTabBtn").style.display=role==="admin"?"":"none";
-      document.getElementById("timeoffTabBtn").textContent=role==="admin"?"Time Off":"My Time Off";
-      // Add Staff filter option for admin
-      ["fp-group","fd-group"].forEach(id=>{
-        const sel=document.getElementById(id);
-        Array.from(sel.options).forEach(o=>{if(o.value==="Staff")o.remove();});
-        const opt=document.createElement("option");opt.value="Staff";opt.textContent="Staff";sel.appendChild(opt);
-      });
-      // Default date range: this week
-      const today=todayStr();
-      const wStart=currentWeekStart();
-      ["fp-from","fd-from"].forEach(id=>document.getElementById(id).value=wStart);
-      ["fp-to","fd-to"].forEach(id=>document.getElementById(id).value=today);
+      document.getElementById("modalTitle").textContent=auth.role==="admin"?"Admin Panel":"Staff Panel";
       loadAndRender();
     })
     .catch(()=>{
@@ -1702,6 +1774,8 @@ function savePws(){
 // ── INIT ──────────────────────────────────────────────────────────────────────
 renderAllGrids();
 startLocation();
+restoreSession();
+restoreTosSession();
 </script>
 </body>
 </html>
