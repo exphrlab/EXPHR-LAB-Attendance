@@ -100,7 +100,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
 .tile-badge.out { background: #f0f0f5; color: #aaa; }
 
 /* TOAST */
-.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1a1a2e; color: #fff; padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; white-space: nowrap; z-index: 999; }
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1a1a2e; color: #fff; padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; max-width: min(90vw, 480px); white-space: normal; text-align: center; z-index: 999; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.green { background: #27ae60; }
 .toast.warn  { background: #e67e22; }
@@ -772,7 +772,7 @@ let toastT;
 function showToast(msg,type=""){
   const el=document.getElementById("toast");
   el.textContent=msg; el.className="toast show"+(type?" "+type:"");
-  clearTimeout(toastT); toastT=setTimeout(()=>el.className="toast",3000);
+  clearTimeout(toastT); toastT=setTimeout(()=>el.className="toast",type==="warn"?7000:3000);
 }
 
 // ── TIME OFF: REQUEST FORM ─────────────────────────────────────────────────
@@ -1307,7 +1307,7 @@ function deleteAttendanceRecord(recordId,name,date,checkIn,checkOut){
     .then(r=>r.json())
     .then(res=>{
       if(!res || res.status!=="success"){
-        showToast("Could not delete (check connection / re-login)","warn");
+        showToast("Delete failed: "+((res&&res.message)?res.message:"unknown error"),"warn");
         return;
       }
       showToast("Record deleted","green");
