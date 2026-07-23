@@ -221,7 +221,8 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   <div style="display:flex;align-items:center;gap:12px">
     <div class="header-time" id="headerTime"></div>
     <button class="admin-btn" onclick="openTimeOffSection()">Time Off</button>
-    <button class="admin-btn" onclick="openAdmin()">Admin / Staff</button>
+    <button class="admin-btn" onclick="openAdmin()">Staff</button>
+    <button class="admin-btn" onclick="openAdmin()">Admin</button>
   </div>
 </div>
 
@@ -498,7 +499,7 @@ function ss(k,v){localStorage.setItem(k,JSON.stringify(v));}
 let members  = ls("att5_members", {
   staff:    ["John Kim","Joy Hong","Kaetlin Marsh"],
   masters:  ["Andrew Yoon"],
-  undergrad:["Angela Qian","Audrey Chun","Charan Bandlamudi","Ella Levy","Gabija Staniskis","Jacob Zalis","Jade Lasanajak","Kate Arne","Yejee Park"]
+  undergrad:["Angela Qian","Charan Bandlamudi","Ella Levy","Gabija Staniskis","Jacob Zalis","Jade Lasanajak","Kate Arne","Yejee Park"]
 });
 let sessions = ls("att5_sessions", {});
 let radius   = ls("att5_radius",   300);
