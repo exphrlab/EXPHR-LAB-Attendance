@@ -222,7 +222,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
     <div class="header-time" id="headerTime"></div>
     <button class="admin-btn" onclick="openTimeOffSection()">Time Off</button>
     <button class="admin-btn" onclick="openAdmin()">Staff</button>
-    <button class="admin-btn" onclick="openAdmin()">Admin</button>
+    <button class="admin-btn" onclick="openAdminOnly()">Admin</button>
   </div>
 </div>
 
@@ -1338,6 +1338,19 @@ function openAdmin(){
   // Wait for the (async) session-restore check to finish first, so clicking
   // this right after the page loads doesn't show the login screen by mistake
   // while a valid saved session is still being verified.
+  if(sessionRestorePromise) sessionRestorePromise.then(proceed);
+  else proceed();
+}
+function openAdminOnly(){
+  const proceed=()=>{
+    if(currentRole==="staff"){
+      showToast("Admin access requires the Admin password. Log out first, then try again.","warn");
+      return;
+    }
+    openAdmin();
+  };
+  // Same session-restore wait as openAdmin(), so a just-loaded page doesn't
+  // wrongly block this before the saved session has finished being checked.
   if(sessionRestorePromise) sessionRestorePromise.then(proceed);
   else proceed();
 }
