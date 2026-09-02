@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EXPHR LAB Timesheet</title>
-<!-- v26: auto-close correction modal -->
+<!-- v27: Needs Discussion button, staff auto-email -->
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -541,7 +541,7 @@ function ss(k,v){localStorage.setItem(k,JSON.stringify(v));}
 
 let members  = ls("att5_members", {
   staff:    ["John Kim","Joy Hong","Kaetlin Marsh"],
-  masters:  ["Andrew Yoon"],
+  masters:  [],
   undergrad:["Angela Qian","Charan Bandlamudi","Ella Levy","Gabija Staniskis","Jacob Zalis","Jade Lasanajak","Kate Arne","Yejee Park"]
 });
 let sessions = ls("att5_sessions", {});
@@ -1385,7 +1385,7 @@ function renderAdminRequestCard(r,showActions){
     <input class="tr-comment-input" placeholder="Optional note to staff..." id="comment-${rowId}">
     <div class="tr-actions">
       <button class="tr-btn tr-btn-approve" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Approved')">Approve</button>
-      <button class="tr-btn tr-btn-deny" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Denied')">Deny</button>
+      <button class="tr-btn tr-btn-deny" onclick="updateTimeOffStatus('${rowId}','${escapeJs(name)}','${start}','Needs Discussion')">Needs Discussion</button>
     </div>` : ""}
     ${currentRole==="admin" ? `
     <div class="tr-actions" style="margin-top:${showActions?"6px":"10px"}">
