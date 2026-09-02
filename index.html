@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EXPHR LAB Timesheet</title>
-<!-- v27: Needs Discussion button, staff auto-email -->
+<!-- v28: Log Missed Work self-service modal -->
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -214,6 +214,38 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   .ph-stats { gap: 12px; }
 }
 
+/* LOG MISSED WORK MODAL */
+.missedwork-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: 300;
+  align-items: flex-start; justify-content: center;
+  overflow-y: auto; padding: 20px 0;
+}
+.missedwork-overlay.open { display: flex; }
+.missedwork-box {
+  background: #fff; border-radius: 18px; padding: 28px 24px;
+  width: 92%; max-width: 440px; box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  margin: auto;
+}
+.mw-title { font-size: 19px; font-weight: 800; color: #1a1a2e; margin-bottom: 4px; }
+.mw-subtitle { font-size: 13px; color: #8892b0; margin-bottom: 22px; }
+.mw-group { margin-bottom: 14px; }
+.mw-label { font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.7px; display: block; margin-bottom: 6px; }
+.mw-select, .mw-input { width: 100%; padding: 10px 12px; border: 1.5px solid #e0e0e8; border-radius: 9px; font-size: 14px; outline: none; font-family: inherit; background: #fff; }
+.mw-select:focus, .mw-input:focus { border-color: #7c3aed; }
+.mw-time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mw-textarea { width: 100%; padding: 10px 12px; border: 1.5px solid #e0e0e8; border-radius: 9px; font-size: 14px; outline: none; font-family: inherit; resize: vertical; min-height: 64px; }
+.mw-textarea:focus { border-color: #7c3aed; }
+.mw-submit { width: 100%; padding: 13px; background: #7c3aed; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+.mw-submit:hover { background: #6d28d9; }
+.mw-cancel { width: 100%; padding: 10px; background: none; border: none; color: #8892b0; font-size: 13px; cursor: pointer; margin-top: 6px; }
+.mw-error { color: #e74c3c; font-size: 13px; margin-top: 8px; display: none; }
+.mw-saving { color: #8892b0; font-size: 13px; margin-top: 8px; display: none; text-align: center; }
+
+/* MANUAL ENTRY HIGHLIGHT in admin table */
+.rec-manual { background: #fffbe6 !important; }
+.rec-manual-badge { display: inline-block; font-size: 10px; font-weight: 700; background: #fff3cd; color: #92722a; border-radius: 4px; padding: 2px 6px; margin-left: 4px; vertical-align: middle; letter-spacing: 0.3px; }
+
 /* AUTO-CLOSE CORRECTION MODAL */
 .autocorrect-overlay {
   display: none; position: fixed; inset: 0;
@@ -245,6 +277,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   <div class="header-title">EXPHR LAB Timesheet</div>
   <div style="display:flex;align-items:center;gap:12px">
     <div class="header-time" id="headerTime"></div>
+    <button class="admin-btn" onclick="openMissedWork()">Log Missed Work</button>
     <button class="admin-btn" onclick="openTimeOffSection()">Time Off</button>
     <button class="admin-btn" onclick="openAdmin()">Staff</button>
     <button class="admin-btn" onclick="openAdminOnly()">Admin</button>
@@ -506,6 +539,58 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- LOG MISSED WORK MODAL -->
+<div class="missedwork-overlay" id="missedworkOverlay" onclick="if(event.target.id==='missedworkOverlay')closeMissedWork()">
+  <div class="missedwork-box">
+    <div class="mw-title">&#128221; Log Missed Work</div>
+    <div class="mw-subtitle">Record a day you forgot to check in/out, or hours worked off-site.</div>
+
+    <div class="mw-group">
+      <label class="mw-label">Your Name</label>
+      <select class="mw-select" id="mw-name">
+        <option value="">— Select your name —</option>
+      </select>
+    </div>
+
+    <div class="mw-group">
+      <label class="mw-label">Date</label>
+      <input class="mw-input" type="date" id="mw-date">
+    </div>
+
+    <div class="mw-group">
+      <label class="mw-label">Type</label>
+      <select class="mw-select" id="mw-type" onchange="onMissedTypeChange()">
+        <option value="In-Office (Missed Clock)">In-Office (Missed Clock)</option>
+        <option value="Other">Other (off-site, conference, etc.)</option>
+      </select>
+    </div>
+
+    <div class="mw-group" id="mw-details-group" style="display:none">
+      <label class="mw-label">Details <span style="color:#e74c3c">*</span></label>
+      <textarea class="mw-textarea" id="mw-details" placeholder="Describe where you worked and what you did..."></textarea>
+    </div>
+
+    <div class="mw-group">
+      <label class="mw-label">Hours Worked</label>
+      <div class="mw-time-row">
+        <div>
+          <label class="mw-label" style="font-size:11px;margin-bottom:4px">Start Time</label>
+          <input class="mw-input" type="time" id="mw-start">
+        </div>
+        <div>
+          <label class="mw-label" style="font-size:11px;margin-bottom:4px">End Time</label>
+          <input class="mw-input" type="time" id="mw-end">
+        </div>
+      </div>
+    </div>
+
+    <div class="mw-error" id="mw-error"></div>
+    <button class="mw-submit" onclick="submitMissedWork()">Submit</button>
+    <div class="mw-saving" id="mw-saving">Saving&hellip;</div>
+    <button class="mw-cancel" onclick="closeMissedWork()">Cancel</button>
   </div>
 </div>
 
@@ -1688,9 +1773,15 @@ function renderPersonView(){
           <tbody>
             ${rangeRecs.length===0
               ? `<tr><td colspan="${currentRole==="admin"?9:6}" style="text-align:center;color:#aaa;padding:16px">No records in this period</td></tr>`
-              : rangeRecs.sort((a,b)=>(b.Date||"").localeCompare(a.Date||"")).map(r=>`
-              <tr>
-                <td>${fmtDateLabel(r.Date||r.date||"")}</td>
+              : rangeRecs.sort((a,b)=>(b.Date||"").localeCompare(a.Date||"")).map(r=>{
+                const isManual = !!(r.EntryType||r.entryType);
+                const entryLabel = r.EntryType||r.entryType||"";
+                const details = r.Details||r.details||"";
+                return `
+              <tr class="${isManual?"rec-manual":""}">
+                <td>${fmtDateLabel(r.Date||r.date||"")}${isManual?`<span class="rec-manual-badge">${entryLabel==="In-Office (Missed Clock)"?"Missed Clock":"Other"}</span>`:""}
+                  ${isManual&&details?`<div style="font-size:11px;color:#92722a;font-style:italic;margin-top:2px">${details}</div>`:""}
+                </td>
                 <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
                 <td style="color:#888;font-size:12px">${r.CheckInLocation||r.checkInLocation||"–"}</td>
                 ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckInDistance||r.checkInDistance?((r.CheckInDistance||r.checkInDistance)+"m"):"–"}</td>`:""}
@@ -1699,7 +1790,7 @@ function renderPersonView(){
                 ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
                 <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
                 ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.RecordId||r.recordId||"")}','${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}')">Delete</button></td>`:""}
-              </tr>`).join("")}
+              </tr>`;}).join("")}
           </tbody>
         </table>
 
@@ -1771,9 +1862,15 @@ function renderDateView(){
       <div class="date-records">
         <table class="rec-table">
           <thead><tr><th>Name</th><th>Group</th><th>Check In</th><th>In Location</th>${currentRole==="admin"?"<th>In Dist.</th>":""}<th>Check Out</th><th>Out Location</th>${currentRole==="admin"?"<th>Out Dist.</th>":""}<th>Duration</th>${currentRole==="admin"?"<th></th>":""}</tr></thead>
-          <tbody>${dr.sort((a,b)=>(a.CheckIn||"").localeCompare(b.CheckIn||"")).map(r=>`
-            <tr>
-              <td style="font-weight:600">${r.Name||r.name||""}</td>
+          <tbody>${dr.sort((a,b)=>(a.CheckIn||"").localeCompare(b.CheckIn||"")).map(r=>{
+            const isManual = !!(r.EntryType||r.entryType);
+            const entryLabel = r.EntryType||r.entryType||"";
+            const details = r.Details||r.details||"";
+            return `
+            <tr class="${isManual?"rec-manual":""}">
+              <td style="font-weight:600">${r.Name||r.name||""}${isManual?`<span class="rec-manual-badge">${entryLabel==="In-Office (Missed Clock)"?"Missed Clock":"Other"}</span>`:""}
+                ${isManual&&details?`<div style="font-size:11px;color:#92722a;font-style:italic;margin-top:2px">${details}</div>`:""}
+              </td>
               <td style="color:#888;font-size:12px">${r.Group||r.group||""}</td>
               <td style="color:#27ae60;font-weight:600">${r.CheckIn||r.checkIn||""}</td>
               <td style="color:#888;font-size:12px">${r.CheckInLocation||r.checkInLocation||"–"}</td>
@@ -1783,7 +1880,7 @@ function renderDateView(){
               ${currentRole==="admin"?`<td style="color:#aaa;font-size:12px">${r.CheckOutDistance||r.checkOutDistance?((r.CheckOutDistance||r.checkOutDistance)+"m"):"–"}</td>`:""}
               <td style="font-weight:700;color:#4a90e2">${r.Duration||r.duration||""}</td>
               ${currentRole==="admin"?`<td><button class="tr-btn tr-btn-delete" style="padding:4px 10px;font-size:11px" onclick="deleteAttendanceRecord('${escapeJs(r.RecordId||r.recordId||"")}','${escapeJs(r.Name||r.name||"")}','${escapeJs(r.Date||r.date||"")}','${escapeJs(r.CheckIn||r.checkIn||"")}','${escapeJs(r.CheckOut||r.checkOut||"")}')">Delete</button></td>`:""}
-            </tr>`).join("")}
+            </tr>`;}).join("")}
           </tbody>
         </table>
       </div>`;
@@ -1928,6 +2025,129 @@ function savePws(){
       showToast("Saved","green");
     })
     .catch(()=>showToast("Could not save. Check connection.","warn"));
+}
+
+// ── LOG MISSED WORK ───────────────────────────────────────────────────────────
+function openMissedWork(){
+  // Populate name dropdown from all members
+  const sel = document.getElementById("mw-name");
+  sel.innerHTML = '<option value="">— Select your name —</option>';
+  const allNames = [];
+  ["staff","masters","undergrad"].forEach(g=>{
+    (members[g]||[]).forEach(name=>{
+      allNames.push({name, group:g});
+    });
+  });
+  allNames.sort((a,b)=>a.name.localeCompare(b.name)).forEach(({name,group})=>{
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.dataset.group = group;
+    opt.textContent = name + " (" + groupLabel(group) + ")";
+    sel.appendChild(opt);
+  });
+
+  // Set date default: today, min = 7 days ago, max = today
+  const todayISO = todayStr();
+  const minDate = new Date();
+  minDate.setDate(minDate.getDate()-7);
+  const minISO = minDate.toLocaleDateString("en-CA",{timeZone:TZ});
+  const datePicker = document.getElementById("mw-date");
+  datePicker.value = todayISO;
+  datePicker.max = todayISO;
+  datePicker.min = minISO;
+
+  // Reset form
+  document.getElementById("mw-type").value = "In-Office (Missed Clock)";
+  document.getElementById("mw-details-group").style.display = "none";
+  document.getElementById("mw-details").value = "";
+  document.getElementById("mw-start").value = "";
+  document.getElementById("mw-end").value = "";
+  document.getElementById("mw-error").style.display = "none";
+  document.getElementById("mw-saving").style.display = "none";
+  document.getElementById("missedworkOverlay").classList.add("open");
+}
+
+function closeMissedWork(){
+  document.getElementById("missedworkOverlay").classList.remove("open");
+}
+
+function onMissedTypeChange(){
+  const t = document.getElementById("mw-type").value;
+  document.getElementById("mw-details-group").style.display = (t==="Other")?"block":"none";
+}
+
+function showMwError(msg){
+  const el = document.getElementById("mw-error");
+  el.textContent = msg; el.style.display = "block";
+}
+
+function fmt12h(timeVal){
+  // Convert "HH:MM" (24h) to "H:MM AM/PM"
+  const parts = timeVal.split(":");
+  let h = parseInt(parts[0]), m = parseInt(parts[1]);
+  const period = h>=12?"PM":"AM";
+  const h12 = h%12===0?12:h%12;
+  return h12+":"+String(m).padStart(2,"0")+" "+period;
+}
+
+function submitMissedWork(){
+  const nameEl = document.getElementById("mw-name");
+  const name = nameEl.value;
+  const groupOpt = nameEl.options[nameEl.selectedIndex];
+  const group = groupOpt ? (groupOpt.dataset.group||"") : "";
+  const date = document.getElementById("mw-date").value;
+  const entryType = document.getElementById("mw-type").value;
+  const details = document.getElementById("mw-details").value.trim();
+  const start = document.getElementById("mw-start").value;
+  const end = document.getElementById("mw-end").value;
+
+  document.getElementById("mw-error").style.display = "none";
+
+  if (!name) return showMwError("Please select your name.");
+  if (!date) return showMwError("Please select a date.");
+  if (!start || !end) return showMwError("Please enter both start and end time.");
+  if (end <= start) return showMwError("End time must be after start time.");
+  if (entryType==="Other" && !details) return showMwError("Please describe where you worked and why.");
+
+  // Calculate duration
+  const startMins = parseInt(start.split(":")[0])*60 + parseInt(start.split(":")[1]);
+  const endMins   = parseInt(end.split(":")[0])*60   + parseInt(end.split(":")[1]);
+  const diffMins  = endMins - startMins;
+  const dur = fmtDurMins(diffMins);
+
+  const body = {
+    attendanceAction: "logMissedWork",
+    name: name,
+    group: groupApiLabel(group),
+    date: date,
+    checkIn: fmt12h(start),
+    checkOut: fmt12h(end),
+    duration: dur,
+    durationMinutes: diffMins,
+    entryType: entryType,
+    details: details
+  };
+
+  document.getElementById("mw-saving").style.display = "block";
+  document.querySelector(".mw-submit").disabled = true;
+
+  fetch(SCRIPT_URL, {method:"POST", body:JSON.stringify(body)})
+    .then(r=>r.json())
+    .then(data=>{
+      document.querySelector(".mw-submit").disabled = false;
+      document.getElementById("mw-saving").style.display = "none";
+      if(data && data.status==="success"){
+        closeMissedWork();
+        showToast("Missed work logged for "+name+" on "+date+" ✓","green");
+      } else {
+        showMwError("Could not save: "+(data&&data.message?data.message:"unknown error"));
+      }
+    })
+    .catch(()=>{
+      document.querySelector(".mw-submit").disabled = false;
+      document.getElementById("mw-saving").style.display = "none";
+      showMwError("Could not connect. Please check your internet connection.");
+    });
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
