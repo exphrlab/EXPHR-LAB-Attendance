@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EXPHR LAB Timesheet</title>
+<!-- v26: auto-close correction modal -->
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -212,6 +213,30 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   .export-btn { margin-left: 0; }
   .ph-stats { gap: 12px; }
 }
+
+/* AUTO-CLOSE CORRECTION MODAL */
+.autocorrect-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65); z-index: 500;
+  align-items: center; justify-content: center;
+}
+.autocorrect-overlay.open { display: flex; }
+.autocorrect-box {
+  background: #fff; border-radius: 18px; padding: 32px 28px;
+  width: 92%; max-width: 400px; box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+  text-align: center;
+}
+.autocorrect-icon { font-size: 36px; margin-bottom: 10px; }
+.autocorrect-title { font-size: 18px; font-weight: 800; color: #1a1a2e; margin-bottom: 10px; }
+.autocorrect-body { font-size: 14px; color: #555; line-height: 1.6; margin-bottom: 22px; }
+.autocorrect-body strong { color: #1a1a2e; }
+.autocorrect-label { font-size: 12px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; display: block; text-align: left; }
+.autocorrect-input { width: 100%; padding: 12px 14px; border: 2px solid #e0e0e8; border-radius: 10px; font-size: 16px; outline: none; text-align: center; font-family: inherit; }
+.autocorrect-input:focus { border-color: #4a90e2; }
+.autocorrect-error { color: #e74c3c; font-size: 13px; margin-top: 8px; display: none; }
+.autocorrect-confirm { width: 100%; padding: 14px; background: #1a1a2e; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 16px; }
+.autocorrect-confirm:hover { background: #2c2c4e; }
+.autocorrect-saving { color: #8892b0; font-size: 13px; margin-top: 10px; display: none; }
 </style>
 </head>
 <body>
@@ -484,6 +509,24 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
   </div>
 </div>
 
+<!-- AUTO-CLOSE CORRECTION MODAL -->
+<div class="autocorrect-overlay" id="autocorrectOverlay">
+  <div class="autocorrect-box">
+    <div class="autocorrect-icon">⚠️</div>
+    <div class="autocorrect-title">Missed Check-Out Detected</div>
+    <div class="autocorrect-body" id="autocorrectBody">
+      You forgot to check out on <strong id="autocorrectDate"></strong>.<br>
+      Your check-out was temporarily saved at <strong>7:00 PM</strong>.<br><br>
+      Please enter your actual departure time to proceed.
+    </div>
+    <label class="autocorrect-label" for="autocorrectTimeInput">Actual Check-Out Time</label>
+    <input class="autocorrect-input" type="time" id="autocorrectTimeInput" placeholder="e.g. 17:30">
+    <div class="autocorrect-error" id="autocorrectError">Please enter your check-out time to continue.</div>
+    <button class="autocorrect-confirm" onclick="submitAutoCorrection()">Confirm</button>
+    <div class="autocorrect-saving" id="autocorrectSaving">Saving correction…</div>
+  </div>
+</div>
+
 <script>
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpldf2CN8UVwADrXB-jNIYz2uE5XM8TfcntQoQG5JKz6m73WcjoojHmxnDoEMezjqz/exec";
 const TZ = "America/New_York";
@@ -611,9 +654,97 @@ function renderGrid(g){
     const t=document.createElement("div");
     t.className="member-tile"+(isIn?" checked-in":"")+(name===selName?" selected":"");
     t.innerHTML='<div class="tile-name">'+name+'</div><span class="tile-badge '+(isIn?"in":"out")+'">'+(isIn?"Clocked In":"Clocked Out")+'</span>';
-    t.onclick=()=>selectMember(name,g);
+    t.onclick=()=>checkAndSelectMember(name,g);
     el.appendChild(t);
   });
+}
+
+// ── AUTO-CLOSE CORRECTION ───────────────────────────────────────────────────
+let pendingAutoRecord = null; // { recordId, date, checkIn, autoCheckOut }
+let pendingSelectArgs = null; // [name, group] — resume selectMember after correction
+
+function checkAndSelectMember(name, group) {
+  // If person is already checked in locally, no need to check for AUTO record
+  if (sessions[name]) { selectMember(name, group); return; }
+
+  // Check server for un-corrected AUTO record for this person
+  fetch(SCRIPT_URL + "?action=checkAutoRecord&name=" + encodeURIComponent(name) + "&t=" + Date.now())
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data && data.found) {
+        pendingAutoRecord = data;
+        pendingSelectArgs = [name, group];
+        // Show correction modal
+        document.getElementById("autocorrectDate").textContent = fmtDateLabel(data.date) || data.date;
+        document.getElementById("autocorrectTimeInput").value = "";
+        document.getElementById("autocorrectError").style.display = "none";
+        document.getElementById("autocorrectSaving").style.display = "none";
+        document.getElementById("autocorrectOverlay").classList.add("open");
+      } else {
+        selectMember(name, group);
+      }
+    })
+    .catch(function(){
+      // If server check fails, proceed normally — don't block the user
+      selectMember(name, group);
+    });
+}
+
+function submitAutoCorrection() {
+  const timeVal = document.getElementById("autocorrectTimeInput").value; // "HH:MM"
+  if (!timeVal) {
+    document.getElementById("autocorrectError").style.display = "block";
+    return;
+  }
+  document.getElementById("autocorrectError").style.display = "none";
+
+  // Convert "HH:MM" (24h) → "H:MM AM/PM" display format to send to server
+  const parts = timeVal.split(":");
+  let h = parseInt(parts[0]), m = parseInt(parts[1]);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const actualCheckOut = h12 + ":" + String(m).padStart(2,"0") + " " + period;
+
+  document.getElementById("autocorrectSaving").style.display = "block";
+  document.querySelector(".autocorrect-confirm").disabled = true;
+
+  const body = {
+    attendanceAction: "correctAutoCheckout",
+    recordId: pendingAutoRecord.recordId,
+    actualCheckOut: actualCheckOut,
+    checkIn: pendingAutoRecord.checkIn,
+    date: pendingAutoRecord.date
+  };
+
+  fetch(SCRIPT_URL, { method: "POST", body: JSON.stringify(body) })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      document.getElementById("autocorrectOverlay").classList.remove("open");
+      document.querySelector(".autocorrect-confirm").disabled = false;
+      document.getElementById("autocorrectSaving").style.display = "none";
+      if (data.status === "success") {
+        showToast("Check-out corrected to " + actualCheckOut + " ✓", "green");
+      } else {
+        showToast("Correction saved (check connection)", "warn");
+      }
+      // Now proceed to select this member normally
+      if (pendingSelectArgs) {
+        selectMember(pendingSelectArgs[0], pendingSelectArgs[1]);
+        pendingSelectArgs = null;
+      }
+      pendingAutoRecord = null;
+    })
+    .catch(function(){
+      document.getElementById("autocorrectOverlay").classList.remove("open");
+      document.querySelector(".autocorrect-confirm").disabled = false;
+      document.getElementById("autocorrectSaving").style.display = "none";
+      showToast("Could not save correction — check connection", "warn");
+      if (pendingSelectArgs) {
+        selectMember(pendingSelectArgs[0], pendingSelectArgs[1]);
+        pendingSelectArgs = null;
+      }
+      pendingAutoRecord = null;
+    });
 }
 
 // ── SELECT ──────────────────────────────────────────────────────────────────
