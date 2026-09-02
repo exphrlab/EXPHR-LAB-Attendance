@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EXPHR LAB Timesheet</title>
-<!-- v28: Log Missed Work self-service modal -->
+<!-- v29: Fix checkAndSelectMember - always check server for AUTO record even when local session exists -->
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -749,17 +749,23 @@ let pendingAutoRecord = null; // { recordId, date, checkIn, autoCheckOut }
 let pendingSelectArgs = null; // [name, group] — resume selectMember after correction
 
 function checkAndSelectMember(name, group) {
-  // If person is already checked in locally, no need to check for AUTO record
-  if (sessions[name]) { selectMember(name, group); return; }
-
-  // Check server for un-corrected AUTO record for this person
+  // ALWAYS check server for an un-corrected AUTO record — even if the browser
+  // still thinks this person is checked in (stale session from yesterday).
+  // If an AUTO record exists, the correction popup is mandatory before
+  // a new check-in is allowed.
   fetch(SCRIPT_URL + "?action=checkAutoRecord&name=" + encodeURIComponent(name) + "&t=" + Date.now())
     .then(function(r){ return r.json(); })
     .then(function(data){
       if (data && data.found) {
+        // Wipe any stale local session so the UI resets cleanly
+        if (sessions[name]) {
+          delete sessions[name];
+          ss("att5_sessions", sessions);
+          renderAllGrids();
+        }
         pendingAutoRecord = data;
         pendingSelectArgs = [name, group];
-        // Show correction modal
+        // Show mandatory correction modal
         document.getElementById("autocorrectDate").textContent = fmtDateLabel(data.date) || data.date;
         document.getElementById("autocorrectTimeInput").value = "";
         document.getElementById("autocorrectError").style.display = "none";
