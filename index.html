@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EXPHR LAB Timesheet</title>
-<!-- v29: Fix checkAndSelectMember - always check server for AUTO record even when local session exists -->
+<!-- v30: Also verify current session with server when localStorage says checked-in but no AUTO record found -->
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -772,7 +772,26 @@ function checkAndSelectMember(name, group) {
         document.getElementById("autocorrectSaving").style.display = "none";
         document.getElementById("autocorrectOverlay").classList.add("open");
       } else {
-        selectMember(name, group);
+        // No AUTO record. If localStorage thinks this person is checked in,
+        // verify with the server — they may have checked out on another device.
+        if (sessions[name]) {
+          fetch(SCRIPT_URL + "?action=checkCurrentSession&name=" + encodeURIComponent(name) + "&t=" + Date.now())
+            .then(function(r){ return r.json(); })
+            .then(function(data){
+              if (data && data.checkedIn === false) {
+                // Server says not checked in — local session is stale, clear it.
+                delete sessions[name];
+                ss("att5_sessions", sessions);
+                renderAllGrids();
+              }
+              selectMember(name, group);
+            })
+            .catch(function(){
+              selectMember(name, group);
+            });
+        } else {
+          selectMember(name, group);
+        }
       }
     })
     .catch(function(){
