@@ -1683,6 +1683,9 @@ function finishLoginState(role,name,pw,persist){
   document.getElementById("roleBadge").className="role-badge "+(role==="admin"?"role-admin":"role-staff");
   document.getElementById("manageTabBtn").style.display=role==="admin"?"":"none";
   document.getElementById("timeoffTabBtn").textContent=role==="admin"?"Time Off":"My Time Off";
+  // Staff 로그인 시 "Staff" 그룹 타이틀을 "My Records"로 변경 (admin은 "Staff" 유지)
+  const staffGroupTitle=document.querySelector(".group-section .group-title");
+  if(staffGroupTitle) staffGroupTitle.textContent=role==="admin"?"💼 Staff":"💼 My Records";
   // Add Staff filter option for admin
   ["fp-group","fd-group"].forEach(id=>{
     const sel=document.getElementById(id);
@@ -1726,6 +1729,9 @@ function logoutRole(){
   document.getElementById("adminPanel").classList.remove("visible");
   document.getElementById("loginBox").style.display="";
   document.getElementById("modalTitle").textContent="Login";
+  // 로그아웃 시 그룹 타이틀 원복
+  const staffGroupTitle=document.querySelector(".group-section .group-title");
+  if(staffGroupTitle) staffGroupTitle.textContent="💼 Staff";
   document.getElementById("pwInput").value="";
   const err=document.getElementById("loginError");
   err.textContent="Incorrect password"; err.style.display="none";
