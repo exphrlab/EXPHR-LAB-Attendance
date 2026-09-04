@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EXPHR LAB Timesheet</title>
-<!-- v30: Also verify current session with server when localStorage says checked-in but no AUTO record found -->
+<!-- v31: Check-in now immediately writes a partial row to the server (saveCheckIn action).
+          Checkout updates that row by RecordId (updateCheckOut action).
+          This ensures autoCloseOpenSessions can find unclosed rows and the correction popup works. -->
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; min-height: 100vh; color: #1a1a2e; }
@@ -889,10 +891,36 @@ function selectMember(name,group){
 function doCheckIn(){
   if(!selName||!locationOK)return;
   if(sessions[selName]){showToast("Already checked in.","warn");return;}
-  sessions[selName]={inTs:Date.now(),group:selGroup,inLocation:currentLocationName,inDistance:currentDistance};
+
+  // Save to localStorage immediately so UI updates right away
+  const inTs=Date.now();
+  sessions[selName]={inTs:inTs,group:selGroup,inLocation:currentLocationName,inDistance:currentDistance,recordId:null};
   ss("att5_sessions",sessions);
-  showToast(selName+" checked in at "+currentLocationName+" \u2713","green");
+  showToast(selName+" checked in at "+currentLocationName+" ✓","green");
   selectMember(selName,selGroup);
+
+  // v31: POST partial row to server immediately so autoClose trigger can find it
+  const ciBody={
+    attendanceAction:"saveCheckIn",
+    name:selName,
+    group:groupApiLabel(selGroup),
+    date:todayStr(),
+    checkIn:fmtTime(inTs),
+    checkInLocation:currentLocationName||"",
+    checkInDistance:(currentDistance!=null?currentDistance:"")
+  };
+  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(ciBody)})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data&&data.recordId){
+        // Store server-assigned RecordId so checkout can update the same row
+        sessions[selName]=Object.assign({},sessions[selName],{recordId:data.recordId});
+        ss("att5_sessions",sessions);
+      }
+    })
+    .catch(function(){
+      console.warn("saveCheckIn server call failed; checkout will use legacy path");
+    });
 }
 
 function doCheckOut(){
@@ -900,19 +928,68 @@ function doCheckOut(){
   const sess=sessions[selName];
   if(!sess){showToast("Not currently checked in.","warn");return;}
   const outTs=Date.now(), dur=outTs-sess.inTs;
-  const rec={
-    name:selName,group:groupApiLabel(selGroup),date:todayStr(),
-    checkIn:fmtTime(sess.inTs),checkOut:fmtTime(outTs),
-    duration:fmtDurMs(dur),durationMinutes:Math.round(dur/60000),
-    checkInLocation:sess.inLocation||"",
-    checkOutLocation:currentLocationName||"",
-    checkInDistance: (sess.inDistance!=null?sess.inDistance:""),
-    checkOutDistance: (currentDistance!=null?currentDistance:"")
-  };
-  showToast("Saving\u2026","");
-  fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)})
-    .then(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast(selName+" checked out \u2014 "+rec.duration,"green");selectMember(selName,selGroup);})
-    .catch(()=>{delete sessions[selName];ss("att5_sessions",sessions);showToast("Saved locally (check connection)","warn");selectMember(selName,selGroup);});
+  const checkOutTime=fmtTime(outTs);
+  const durStr=fmtDurMs(dur);
+  const durMins=Math.round(dur/60000);
+
+  showToast("Saving…","");
+
+  function onSaved(){
+    delete sessions[selName];
+    ss("att5_sessions",sessions);
+    showToast(selName+" checked out — "+durStr,"green");
+    selectMember(selName,selGroup);
+  }
+  function onFail(){
+    delete sessions[selName];
+    ss("att5_sessions",sessions);
+    showToast("Saved locally (check connection)","warn");
+    selectMember(selName,selGroup);
+  }
+
+  if(sess.recordId){
+    // v31: update the existing partial row by RecordId
+    const coBody={
+      attendanceAction:"updateCheckOut",
+      recordId:sess.recordId,
+      checkOut:checkOutTime,
+      duration:durStr,
+      durationMinutes:durMins,
+      checkOutLocation:currentLocationName||"",
+      checkOutDistance:(currentDistance!=null?currentDistance:"")
+    };
+    fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(coBody)})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        if(data&&data.status==="not_found"){
+          // Row deleted on server - fall back to creating a new complete row
+          const rec={
+            name:selName,group:groupApiLabel(selGroup),date:todayStr(),
+            checkIn:fmtTime(sess.inTs),checkOut:checkOutTime,
+            duration:durStr,durationMinutes:durMins,
+            checkInLocation:sess.inLocation||"",
+            checkOutLocation:currentLocationName||"",
+            checkInDistance:(sess.inDistance!=null?sess.inDistance:""),
+            checkOutDistance:(currentDistance!=null?currentDistance:"")
+          };
+          return fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)});
+        }
+      })
+      .then(onSaved).catch(onFail);
+  } else {
+    // Legacy path: no RecordId (old localStorage session or saveCheckIn failed)
+    const rec={
+      name:selName,group:groupApiLabel(selGroup),date:todayStr(),
+      checkIn:fmtTime(sess.inTs),checkOut:checkOutTime,
+      duration:durStr,durationMinutes:durMins,
+      checkInLocation:sess.inLocation||"",
+      checkOutLocation:currentLocationName||"",
+      checkInDistance:(sess.inDistance!=null?sess.inDistance:""),
+      checkOutDistance:(currentDistance!=null?currentDistance:"")
+    };
+    fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify(rec)})
+      .then(onSaved).catch(onFail);
+  }
 }
 
 // ── MY ATTENDANCE SUMMARY (own hours — shown after tapping your name) ──────
