@@ -1686,11 +1686,11 @@ function finishLoginState(role,name,pw,persist){
   // Staff 로그인 시 "Staff" 그룹 타이틀을 "My Records"로 변경 (admin은 "Staff" 유지)
   const staffGroupTitle=document.querySelector(".group-section .group-title");
   if(staffGroupTitle) staffGroupTitle.textContent=role==="admin"?"💼 Staff":"💼 My Records";
-  // Add Staff filter option for admin
+  // Add Staff filter option — label "Staff" for admin, "My Records" for staff
   ["fp-group","fd-group"].forEach(id=>{
     const sel=document.getElementById(id);
     Array.from(sel.options).forEach(o=>{if(o.value==="Staff")o.remove();});
-    const opt=document.createElement("option");opt.value="Staff";opt.textContent="Staff";sel.appendChild(opt);
+    const opt=document.createElement("option");opt.value="Staff";opt.textContent=role==="admin"?"Staff":"My Records";sel.appendChild(opt);
   });
   // Default date range: this week
   const today=todayStr();
