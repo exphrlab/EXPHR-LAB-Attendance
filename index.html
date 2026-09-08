@@ -775,22 +775,32 @@ function checkAndSelectMember(name, group) {
         document.getElementById("autocorrectOverlay").classList.add("open");
       } else {
         // No AUTO record. If localStorage thinks this person is checked in,
-        // verify with the server — they may have checked out on another device.
+        // verify with the server only when we have a recordId — meaning saveCheckIn
+        // succeeded and the server definitely has a row for this session.
+        // If recordId is null (saveCheckIn still in flight or failed), skip server
+        // verification entirely so we never wipe a valid local session by mistake.
         if (sessions[name]) {
-          fetch(SCRIPT_URL + "?action=checkCurrentSession&name=" + encodeURIComponent(name) + "&t=" + Date.now())
-            .then(function(r){ return r.json(); })
-            .then(function(data){
-              if (data && data.checkedIn === false) {
-                // Server says not checked in — local session is stale, clear it.
-                delete sessions[name];
-                ss("att5_sessions", sessions);
-                renderAllGrids();
-              }
-              selectMember(name, group);
-            })
-            .catch(function(){
-              selectMember(name, group);
-            });
+          const recordId = sessions[name].recordId;
+          if (recordId) {
+            // We know the server has a row — safe to verify
+            fetch(SCRIPT_URL + "?action=checkCurrentSession&name=" + encodeURIComponent(name) + "&t=" + Date.now())
+              .then(function(r){ return r.json(); })
+              .then(function(data){
+                if (data && data.checkedIn === false) {
+                  delete sessions[name];
+                  ss("att5_sessions", sessions);
+                  renderAllGrids();
+                }
+                selectMember(name, group);
+              })
+              .catch(function(){
+                selectMember(name, group);
+              });
+          } else {
+            // recordId not yet set — saveCheckIn pending or failed.
+            // Never wipe the session in this state; just proceed.
+            selectMember(name, group);
+          }
         } else {
           selectMember(name, group);
         }
@@ -927,6 +937,13 @@ function doCheckOut(){
   if(!selName||!locationOK)return;
   const sess=sessions[selName];
   if(!sess){showToast("Not currently checked in.","warn");return;}
+
+  // Prevent double-click / re-entry
+  const btnCO=document.getElementById("btnCO");
+  const btnCI=document.getElementById("btnCI");
+  if(btnCO) btnCO.disabled=true;
+  if(btnCI) btnCI.disabled=true;
+
   const outTs=Date.now(), dur=outTs-sess.inTs;
   const checkOutTime=fmtTime(outTs);
   const durStr=fmtDurMs(dur);
@@ -941,10 +958,10 @@ function doCheckOut(){
     selectMember(selName,selGroup);
   }
   function onFail(){
-    delete sessions[selName];
-    ss("att5_sessions",sessions);
-    showToast("Saved locally (check connection)","warn");
-    selectMember(selName,selGroup);
+    // Re-enable buttons so user can retry
+    if(btnCO) btnCO.disabled=false;
+    if(btnCI) btnCI.disabled=false;
+    showToast("Network error — please try again","warn");
   }
 
   if(sess.recordId){
