@@ -710,7 +710,8 @@ function findNearestOffice(lat,lng){
 function startLocation(){
   const banner=document.getElementById("locBanner"),msg=document.getElementById("locMsg");
   if(!navigator.geolocation){banner.className="loc-banner fail";msg.textContent="Geolocation not supported on this device.";return;}
-  navigator.geolocation.watchPosition(pos=>{
+
+  function onPosition(pos){
     curLat=pos.coords.latitude; curLng=pos.coords.longitude;
     const {location,distance}=findNearestOffice(curLat,curLng);
     locationOK=distance<=radius;
@@ -722,12 +723,21 @@ function startLocation(){
       : "Check-in is only available at lab locations.";
     renderAllGrids();
     if(selName)selectMember(selName,selGroup);
-  },()=>{
+  }
+  function onError(){
     locationOK=false; currentLocationName=null;
     document.getElementById("locBanner").className="loc-banner fail";
     document.getElementById("locMsg").textContent="Location access denied. Please allow location access to use this app.";
     if(selName)selectMember(selName,selGroup);
-  },{enableHighAccuracy:true,timeout:15000,maximumAge:20000});
+  }
+
+  // Step 1: fast low-accuracy fix (works well on WiFi) \u2014 gets buttons enabled quickly
+  navigator.geolocation.watchPosition(onPosition, onError,
+    {enableHighAccuracy:false, timeout:10000, maximumAge:30000});
+
+  // Step 2: high-accuracy watch runs in parallel to refine if GPS is available
+  navigator.geolocation.watchPosition(onPosition, function(){},
+    {enableHighAccuracy:true, timeout:20000, maximumAge:10000});
 }
 
 
