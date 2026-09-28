@@ -430,7 +430,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
           <select class="filter-select" id="fp-group">
             <option value="">All Groups</option>
             <option value="Undergrad">Undergrad</option>
-            <option value="Master's">Master&#39;s</option>
+            <option value="Grad">Grad</option>
           </select>
           <input class="filter-date" type="date" id="fp-from">
           <span style="font-size:13px;color:#aaa">to</span>
@@ -447,7 +447,7 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f5f6fa; 
           <select class="filter-select" id="fd-group">
             <option value="">All Groups</option>
             <option value="Undergrad">Undergrad</option>
-            <option value="Master's">Master&#39;s</option>
+            <option value="Grad">Grad</option>
           </select>
           <input class="filter-date" type="date" id="fd-from">
           <span style="font-size:13px;color:#aaa">to</span>
@@ -628,8 +628,8 @@ function ss(k,v){localStorage.setItem(k,JSON.stringify(v));}
 
 let members  = ls("att5_members", {
   staff:    ["John Kim","Joy Hong","Kaetlin Marsh"],
-  masters:  [],
-  undergrad:["Angela Qian","Charan Bandlamudi","Ella Levy","Gabija Staniskis","Jacob Zalis","Jade Lasanajak","Kate Arne","Yejee Park"]
+  masters:  ["Andrew Phillips","Ariana Herman","Niaria Leach","Yeleina Lind"],
+  undergrad:["Alice Huang","Angela Qian","Ella Levy","Gabija Staniskis","Jacob Zalis","Jade Lasanajak","Kate Arne","Yejee Park"]
 });
 let sessions = ls("att5_sessions", {});
 let radius   = ls("att5_radius",   300);
@@ -654,8 +654,8 @@ function fmtDurMs(ms){if(!ms||ms<0)return"–";const h=Math.floor(ms/3600000),m=
 function fmtDurMins(mins){if(!mins||mins<=0)return"0m";const h=Math.floor(mins/60),m=mins%60;return h>0?h+"h "+m+"m":m+"m";}
 function todayStr(){return new Date().toLocaleDateString("en-CA",{timeZone:TZ});}
 function haversine(a,b,c,d){const R=6371000,dL=(c-a)*Math.PI/180,dLo=(d-b)*Math.PI/180;const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLo/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
-function groupLabel(g){return g==="staff"?"Staff":g==="masters"?"Master's":"Undergrad";}
-function groupApiLabel(g){return g==="staff"?"Staff":g==="masters"?"Master's":"Undergrad";}
+function groupLabel(g){return g==="staff"?"Staff":g==="masters"?"Grad":"Undergrad";}
+function groupApiLabel(g){return g==="staff"?"Staff":g==="masters"?"Grad":"Undergrad";}
 function gbadgeClass(g){return"selected-group-badge gbadge-"+g;}
 function chipClass(g){return"chip chip-"+g;}
 
@@ -1820,7 +1820,7 @@ function loadAndRender(){
 
 function getFiltered(groupSel,from,to){
   let recs=allRecords;
-  // Logged-in staff can see all Undergrad/Master's records, but only their own Staff record
+  // Logged-in staff can see all Undergrad/Grad records, but only their own Staff record
   if(currentRole==="staff" && loggedInStaffName){
     recs=recs.filter(r=>{
       const g=r.Group||r.group||"";
